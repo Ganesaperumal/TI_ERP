@@ -2,106 +2,145 @@
 **From:** Argon (Director & CTO — Head Office / Gemini Web)
 **To:** Agy CLI Execution Wing (5x Senior Devs — Flash 3.8 High)
 **Repository:** `https://github.com/Ganesaperumal/TI-ERP.git`
-**Dispatch ID:** `DISPATCH-001` (Milestone 1: Foundation, Monorepo, Docker & Full Enterprise Prisma Schema)
+**Last Verified Commit:** `11613591e87e1199a51c730eb92cdb75b9316955`
+**Dispatch ID:** `DISPATCH-002` (M1 Schema Hardening + Milestone 2: Core Masters, 5 Product Types, Multi-UOM, Batch/MRP Engine, Repacking & Cycle Count Audit)
 **Status:** `EXECUTE IMMEDIATELY`
 
 ---
 
-## PART 1: MANDATORY REPO & OFFLINE BRAIN INITIALIZATION
-Before starting dev work, the Lead Dispatcher / `DEV-1` MUST create/update the following permanent offline memory files inside `agy-cli/` so Head Office (Argon Web) and Agy CLI remain 100% synchronized across any session or account:
+## SECTION A: DOCUMENTATION & REPO HYGIENE UPDATES (MANDATORY FIRST STEP)
 
-1. **`agy-cli/00_BOOTLOADER_ARGON.md`**: Stores the HO <-> WO Single-File MD Communication Protocol (`HO_TO_WO_DISPATCH.md` and `WO_TO_HO_REPORT.md`), the 5 Senior Dev roles, and strict coding rules (Zero `any`, `Decimal(15,4)` for quantities/costs, `Decimal(15,2)` for currency, UUID/ULID offline-safe IDs, `tenantId` + `branchId` + `syncVersion` on all operational tables, and 100% Plug-and-Play `StoreConfig` toggles).
-2. **`agy-cli/01_MASTER_BLUEPRINT.md`**: Persist the full locked-in specification across all 8.5 sections:
-   - **Sec 1:** Model B (Local LAN Store Server + Cloud Sync), PostgreSQL + NestJS (TS) + React/Vite/Next.js + Electron/Tauri Hardware Bridge, BYOK AI keys, all 5 Hardware Peripherals (Silent ESC/POS Thermal + Drawer Kick, ZPL/TSPL Barcode Sticker Designer, Weighing Scale Barcode Prefix + Live Serial RS232/USB, Customer Dual Display with Dynamic UPI QR, EDC/Soundbox Hooks for Pine Labs/Paytm/PhonePe/Razorpay).
-   - **Sec 2:** Single-Store vs. Multi-Branch HO Toggle, Internal Bins (`GODOWN`, `SHOP_FLOOR`, `DAMAGED_RETURNABLE`, `DAMAGED_SCRAP`), Goods-in-Transit (GIT) Stock Transfers with E-Way Bill/Challan, Branch Price Overrides, Terminal Locking, Opening Float, Safe Drop, Blind Cash Close (Denomination count -> X/Z Report -> Cashier Shortage Ledger).
-   - **Sec 3:** 5 Product Types (Standard FMCG with Multi-Barcode Aliases, Weighed Loose Goods, Bulk-to-Retail Repacking with Packaging & Wastage Costing, Pre-packed & Dynamic Combos/BOM, Apparel Size/Color Matrix), Multi-UOM Hierarchies (`Piece`, `Pack`, `Box`, `Carton`), Item/Store-level toggle for POS Batch/MRP Popup vs. Auto-FEFO, Near-Expiry Clearance, Live Rack-wise Cycle Counting (Stock Freeze Snapshot), Negative Stock Rule (`ALLOW`, `WARN_PIN`, `BLOCK`), Shelf-Edge Gondola Tag printing.
-   - **Sec 4:** Auto-Reorder (Min/Max & Sales Velocity -> WhatsApp PDF PO), Fast Direct GRN vs. Enterprise 3-Way Match (PO -> Gate Entry -> Blind GRN -> Invoice), BYOK AI Invoice OCR, Multi-Layer Scheme & True Net Landing Cost Calculator, Red Margin Guardrail during GRN, Consignment (Pay-on-Sale) Inventory, Supplier Credit Alerts & Debit Notes.
-   - **Sec 5:** Keyboard-first + Touch POS with Remappable Function Keys (`F1-F12`), Cross-Counter LAN Hold/Recall Bills, 3-digit PLU & Phonetic Search, Multi-Mode Split Payment (Cash + UPI + Card + Sodexo + Credit Note + Loyalty + Khata), Retail vs. Wholesale Tier Toggle, Rule-Based Promotions (BOGO, Mix & Match, Cart-Slab Upsell Prompt, Happy Hour, Receipt Coupons), Barcode Bill Scan Returns/Instant Exchange/Credit Slip, Home Delivery Pick-List & Delivery Boy Reconciliation, Queue-Buster Mobile mPOS.
-   - **Sec 6:** Loyalty Points (Category/Margin rules, Silver/Gold/VIP tiers, Optional OTP Redemption), Customer Credit Khata (Limits, Automated 1st-of-Month WhatsApp Statement + UPI Link), Digital WhatsApp Bills & Star Feedback, 1st-to-10th Monthly Ration Missing Customer Alerts, RFM Segmentation, Barcoded Prepaid Gift Cards.
-   - **Sec 7:** Regular GST vs. Composition Toggle, MRP Tax Back-Calculation, HSN Receipt Summary, GSTR-1/2B/3B Exports, E-Invoicing (IRN/QR) & E-Way Bill hooks, Automated Double-Entry Accounting (Chart of Accounts, Day Book, Cash/Bank Book, General Ledger, Trial Balance, P&L, Balance Sheet), UPI/Bank MDR Settlement Reconciliation, 1-Click Tally Prime XML Exporter.
-   - **Sec 8 & 8.5:** POS Supervisor Override (PIN/Barcode/Mobile) & Daily Void/Exception Report, RBAC with Cost/Margin Masking, Salesman Commissions, Biometric/Selfie Attendance & Shift Roster, Staff Payroll (Salary + Incentives - Leaves - Advances - Staff Groceries - POS Shortages), 50k+ Indian FMCG Seed Structure, Legacy Importer, Bilingual/Regional Receipts (English + Tamil/Hindi/etc.), Owner Mobile Dashboard + 10:30 PM WhatsApp Summary, Super-Admin SaaS License Control.
-3. **`agy-cli/02_STATE_TRACKER.md`**: Track Milestone 1 (`DISPATCH-001`) as `IN_PROGRESS`.
+1. **Remove Root-Level Duplicate Docs:**
+   In commit `11613591e87e1199a51c730eb92cdb75b9316955`, control files (`00_BOOTLOADER_ARGON.md`, `01_MASTER_BLUEPRINT.md`, `02_STATE_TRACKER.md`, `03_DEV_PROTOCOL.md`, `HO_TO_WO_DISPATCH.md`, `WO_TO_HO_REPORT.md`) were placed in BOTH the repository root and `agy-cli/`.
+   - **Action:** Move/consolidate `03_DEV_PROTOCOL.md` into `agy-cli/03_DEV_PROTOCOL.md` and delete the duplicate control `.md` files from the root directory (keep ONLY `README.md` in root; keep all HO/WO docs strictly inside `agy-cli/`).
+2. **Update `agy-cli/02_STATE_TRACKER.md`:**
+   - Mark **M1: Foundation & Database Architecture** as `COMPLETED (Commit: 11613591e87e1199a51c730eb92cdb75b9316955)`.
+   - Mark **M2: Core Masters & Inventory Engine (`WO-201` to `WO-205`)** as `IN_PROGRESS`.
 
 ---
 
-## PART 2: PARALLEL WORK ORDERS FOR THE 5 SENIOR DEVS
+## SECTION B: AUDIT & RE-MODIFICATION OF MILESTONE 1 BUILD (`REMOD-101`)
 
-Execute these 5 Work Orders modularly without overlapping file conflicts.
+Before writing Milestone 2 services, `DEV-1` must inspect `packages/database/prisma/schema/` (`00_datasource.prisma` through `03_pos_crm_finance_hr.prisma`) and verify/fix the following strict architectural invariants:
 
-### [WO-101] Assigned to `DEV-1` (Monorepo, Turborepo & Model-B Docker Infrastructure)
-**Objective:** Initialize the production Turborepo monorepo and Model-B Local LAN + Cloud Docker environment.
-**Exact Files to Create:**
-1. `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`, `.gitignore`, `.env.example`
-2. Workspace structure:
-   - `apps/api` (NestJS TypeScript Backend — runs on both Local Store Server & Cloud)
-   - `apps/pos-web` (React + Vite + TypeScript — Ultra-fast POS, Store ERP & Customer Dual Display)
-   - `apps/cloud-admin` (Next.js App Router + TypeScript — Owner Mobile Command Center, Multi-Branch HO & SaaS Super-Admin License Portal)
-   - `apps/hardware-bridge` (Lightweight Node/Electron/Tauri Local Agent for Silent ESC/POS Print, Cash Drawer Kick, ZPL Barcode Print & Serial RS232/USB Weighing Scales)
-   - `packages/database` (Prisma ORM, migrations, seed scripts, and database client export)
-   - `packages/shared-types` (Shared DTOs, Enums, `StoreConfig` JSONB interfaces, Keyboard Shortcut maps)
-3. `docker/docker-compose.local-store.yml` (PostgreSQL 16 + Redis for LAN Hold-Bill/WebSocket pub-sub + Local Store API container)
-4. `docker/docker-compose.cloud.yml` (Cloud PostgreSQL 16 + Redis + Cloud Sync API)
+1. **Precision Decimal Audit:** Every single currency, tax rate, conversion factor, weight, and stock quantity column across `01`, `02`, and `03` MUST have explicit `@db.Decimal(15, 4)` (for quantities, weights, conversion factors, net landing costs) or `@db.Decimal(15, 2)` (for final invoice totals, MRPs, ledger balances). Zero `Float` types are permitted anywhere in Prisma.
+2. **Offline-First Sync Columns Audit:** Verify every operational model includes `tenantId`, `branchId` (nullable only on global tenant masters), `syncVersion BigInt @default(1)`, and `lastSyncedAt DateTime?`.
+3. **Database Service Export (`packages/database/src/index.ts`):**
+   Currently `packages/database/src/index.ts` only has `export * from '@prisma/client';`.
+   - **Action:** Upgrade `packages/database/src/index.ts` to also export a reusable `PrismaService` singleton / helper and `Decimal` utility (`Prisma.Decimal`) so `apps/api` can inject `@ti-erp/database` cleanly without duplicate PrismaClient instantiations.
 
 ---
 
-### [WO-102] Assigned to `DEV-2` (Prisma Schema Part A: Tenants, Licensing, Branches, Bins, RBAC, Counters & Sync Queue)
-**Objective:** Write the foundational multi-tenant, multi-branch, register shift, and LAN-to-Cloud sync models in `packages/database/prisma/schema.prisma` (or modular Prisma schema files inside `packages/database/prisma/schema/` using Prisma `prismaSchemaFolder` preview feature so Devs 2, 3, and 4 can work in parallel!).
-**Use Prisma Multi-File Schema (`previewFeatures = ["prismaSchemaFolder"]`):**
-Create `packages/database/prisma/schema/01_core_tenant_branch.prisma` containing:
-- `SaaSLicense` & `Tenant` (License key, plan tier, active modules JSONB, AMC expiry, BYOK AI keys encrypted config, GST regime: `REGULAR` | `COMPOSITION`, topology: `SINGLE_STORE` | `MULTI_BRANCH`).
-- `Branch` (Store/Warehouse type: `HEAD_OFFICE`, `WAREHOUSE`, `RETAIL_STORE`, GSTIN, address, regional language code e.g. `ta-IN`, `hi-IN`, local server IP, `branchSettings` JSONB for plug-and-play overrides).
-- `StorageBin` (`GODOWN`, `SHOP_FLOOR`, `DAMAGED_RETURNABLE`, `DAMAGED_SCRAP`, `CONSIGNMENT` with aisle/rack/shelf coordinates).
-- `Role` & `User` (Granular permissions JSONB, `maskCostAndMargin: Boolean`, encrypted 4-digit `supervisorPin`, barcode badge hash, salesman commission rate).
-- `PosTerminal` & `CashierShift` (Terminal MAC/ID lock, `openingFloat`, `midDaySafeDrops`, `blindCloseEnabled`, expected vs. physical denomination JSONB breakdown, `shortageOrExcessAmount`, X/Z-Report status).
-- `AuditExceptionLog` (Tracks every POS line void, bill cancel, manual price change, duplicate bill print, no-sale drawer kick with `cashierId`, `supervisorId`, timestamp).
-- `SyncOutbox` & `SyncInbox` (Tracks LAN-to-Cloud delta mutations with `entityName`, `recordId`, `operation`, `payload`, `syncVersion`, `status`).
+## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 2 (`WO-201` TO `WO-205`)
+
+Execute these 5 Work Orders in parallel across `DEV-1` through `DEV-5`. Every backend endpoint must use strict DTO validation (`class-validator` / `zod`), enforce `tenantId` + `branchId` isolation, and use `Prisma.Decimal` arithmetic.
+
+### [WO-201] Assigned to `DEV-1` (Database Module, Tenant/Branch Onboarding, Storage Bins & Plug-and-Play `StoreConfig` API)
+**Target Directory:** `apps/api/src/modules/core/` & `packages/database/`
+**Tasks:**
+1. Create `apps/api/src/prisma/prisma.module.ts` and `prisma.service.ts` (global NestJS module connecting to `@ti-erp/database` with automatic `syncVersion` increment middleware on create/update).
+2. Create `apps/api/src/modules/core/tenant-branch.controller.ts` & `tenant-branch.service.ts`:
+   - CRUD for `Tenant`, `Branch` (`HEAD_OFFICE`, `WAREHOUSE`, `RETAIL_STORE`), `StorageBin` (`GODOWN`, `SHOP_FLOOR`, `DAMAGED_RETURNABLE`, `DAMAGED_SCRAP`, `CONSIGNMENT`), and `PosTerminal`.
+   - `GET / PUT /api/v1/core/store-config/:branchId`: Returns and updates the merged Plug-and-Play `StoreConfig` (merging Tenant-level defaults with Branch-level overrides for Topology mode, Hardware config, Scale prefix `20+SKU+Weight`, Blind close, Batch popup vs. FEFO, Negative stock policy, Remappable POS Function Keys `F1-F12`, GST Regular vs. Composition, BYOK AI keys).
+3. Expand `packages/database/prisma/seed.ts` to seed a realistic demo supermarket:
+   - 1 Tenant (`SINGLE_STORE` toggleable to `MULTI_BRANCH`), 2 Branches (`Main Supermarket` + `Central Warehouse`), 4 Default Bins per branch (`GODOWN`, `SHOP_FLOOR`, `DAMAGED_RETURNABLE`, `DAMAGED_SCRAP`), 3 POS Counters, standard GST HSN slabs (0%, 5%, 12%, 18%, 28% + Cess), and sample items across all 5 Product Types.
 
 ---
 
-### [WO-103] Assigned to `DEV-3` (Prisma Schema Part B: Products, Multi-UOM, Batches/MRP, Repacking, Combos & Procurement)
-**Objective:** Create `packages/database/prisma/schema/02_inventory_procurement.prisma` covering Sections 3 & 4 without missing a single field:
-- `Category`, `Brand`, `HsnTaxMaster` (`cgstRate`, `sgstRate`, `igstRate`, `cessRate`, `cessPerUnit`).
-- `Product` (SKU code, `nameEn`, `nameRegional`, `shortPluCode` for 3-digit lookup, `productType`: `STANDARD_FMCG` | `WEIGHED_LOOSE` | `REPACKED_BULK` | `COMBO_KIT` | `VARIANT_MATRIX`, `baseUom`, `batchTrackingMode`: `STORE_DEFAULT` | `POPUP_ON_MRP_DIFF` | `AUTO_FEFO`, `negativeStockRule`: `STORE_DEFAULT` | `ALLOW` | `WARN_PIN` | `BLOCK`, `isConsignment`, `minStock`, `maxStock`, `reorderVelocityDays`).
-- `ProductBarcode` (Many-to-one alias mapping so 1 SKU can have multiple factory/internal EAN barcodes, linked optionally to a specific `uomId` or `batchId`).
-- `ProductUomConversion` (`uomName` e.g., Box, Carton, `conversionFactor` `Decimal(15,4)`, `barcode`, tier prices).
-- `ProductVariant` (Size, Color, Style matrix linked to parent `Product`).
-- `ComboBomItem` (Links parent Combo SKU to child SKUs with quantity and price apportionment, supporting `PRE_PACKED` and `DYNAMIC_POS` modes).
-- `InventoryBatch` (Per `branchId` + `productId` + `batchNumber` + `expiryDate` + `mrp` + `purchaseRate` + `netLandingCost` + `retailSellingPrice` + `wholesalePriceTier1` + `wholesalePriceTier2` + `clearanceDiscountPct`).
-- `BinStockBalance` & `StockLedger` (Exact quantity `Decimal(15,4)` per `branchId` + `binId` + `batchId`, immutable audit trail of every stock movement).
-- `RepackingJob` (Bulk parent SKU + Batch consumed -> Retail child SKU + new Batch produced, `bulkQtyConsumed`, `retailPacksProduced`, `wastageQty`, `packagingMaterialCost`, auto-calculated new batch landing cost).
-- `StockTransfer` & `StockTransferItem` (Inter-branch Indent -> Dispatched `GOODS_IN_TRANSIT` -> Received -> Discrepancy shortage/damage + `eWayBillNo`, `vehicleNo`).
-- `CycleCountSession` & `CycleCountItem` (Rack/Category live audit with `systemFrozenQty`, `physicalCountedQty`, `varianceQty`, approval status).
-- `Supplier`, `PurchaseOrder`, `GoodsReceiptNote` (GRN supporting Fast Direct Mode & 3-Way Match Mode, AI OCR source metadata), `GrnLineItem` (Qty, Free/Scheme Qty, Trade Disc %, Cash Disc %, Apportioned Freight, GST, calculated `netLandingCost`, margin guardrail flag), `PurchaseReturnDebitNote`, `ConsignmentSettlement`.
+### [WO-202] Assigned to `DEV-2` (Product Master Engine: All 5 Product Types, Multi-Barcode Aliases, Multi-UOM & Regional Transliteration Helper)
+**Target Directory:** `apps/api/src/modules/catalog/`
+**Tasks:**
+1. Build `CatalogModule` (`catalog.controller.ts`, `catalog.service.ts`, DTOs) supporting:
+   - `Category`, `Brand`, and `HsnTaxMaster` CRUD.
+   - `Product` CRUD supporting all 5 locked-in types:
+     1. `STANDARD_FMCG`
+     2. `WEIGHED_LOOSE`
+     3. `REPACKED_BULK`
+     4. `COMBO_KIT` (`PRE_PACKED` and `DYNAMIC_POS` Bill-of-Materials via `ComboBomItem`)
+     5. `VARIANT_MATRIX` (Size × Color × Style automatic child SKU generator via `ProductVariant`)
+   - **Multi-Barcode Alias Engine:** Map multiple factory/internal barcodes (`ProductBarcode`) to a single SKU, or map Carton/Box barcodes via `ProductUomConversion` (`Piece` -> `Pack` -> `Box` -> `Carton`).
+   - **Ultra-Fast POS Barcode & PLU Resolver (`GET /api/v1/catalog/lookup?code=...&branchId=...`):**
+     - Must resolve within <5ms:
+       - Case A: Standard EAN/Internal barcode or Multi-UOM carton barcode.
+       - Case B: 3-digit `shortPluCode` or phonetic search (`nameEn` / `nameRegional`).
+       - Case C: **Weighing Scale EAN-13 Prefix Parser** (reads `StoreConfig.scaleBarcodePrefix`, e.g., `20` + `5-digit SKU/PLU` + `5-digit weight in grams` + check digit, returning the resolved Product + exact fractional weight in kg e.g., `0.750`!).
+   - **Pre-Loaded FMCG Seed Importer & Legacy CSV/Excel Mapper (`POST /api/v1/catalog/import`):** Endpoint to bulk-import items from CSV/JSON or seed library with Bilingual (`nameEn` + `nameRegional` e.g. Tamil/Hindi) support.
 
 ---
 
-### [WO-104] Assigned to `DEV-4` (Prisma Schema Part C: POS Billing, Promotions, CRM/Loyalty/Khata, GST, Accounting & HR/Payroll)
-**Objective:** Create `packages/database/prisma/schema/03_pos_crm_finance_hr.prisma` covering Sections 5, 6, 7 & 8:
-- `PosInvoice` & `PosInvoiceLine` (Supports `WALK_IN_RETAIL`, `WHOLESALE_B2B`, `HOME_DELIVERY`, `MPOS_QUEUE_TOKEN`; stores `mrp`, `sellingPrice`, `netLandingCostSnapshot` for live daily gross profit calculation, `discountAmount`, `promoId`, `taxableAmount`, `cgstAmount`, `sgstAmount`, `igstAmount`, `cessAmount`, `salesmanId`).
-- `PosParkedBill` (Cross-counter LAN held bills with cart JSONB and terminal info).
-- `PosPaymentSplit` (Supports `CASH`, `UPI`, `CARD`, `SODEXO`, `CREDIT_NOTE_SLIP`, `LOYALTY_POINTS`, `CUSTOMER_KHATA`, `GIFT_CARD` with EDC terminal ref, UPI txn ID, cash tendered & change returned, and `bankSettlementStatus` for MDR reconciliation).
-- `SalesReturn` & `CreditNoteSlip` (Barcoded credit slip with expiry, exchange link, or PIN-approved refund).
-- `PromotionRule` (Engine supporting `BOGO`, `MIX_AND_MATCH`, `CART_SLAB_UPSELL`, `HAPPY_HOUR`, `COUPON_CODE` with start/end dates, active days/hours, condition JSONB, reward JSONB).
-- `DeliveryOrder` & `DeliveryBoySettlement` (Pick-list status, rack-sorted items, assigned rider, COD/UPI reconciliation).
-- `Customer`, `LoyaltyLedger`, `CustomerKhataLedger`, `GiftCard` (Phone number lookup, Silver/Gold/VIP tier, points balance, OTP verification log, credit limit, monthly WhatsApp statement status, 1st-to-10th monthly ration cycle tracker, RFM score).
-- `AccountGroup`, `LedgerAccount`, `JournalVoucher`, `JournalVoucherLine` (Complete double-entry bookkeeping, linking POS Z-Reports, GRNs, Expenses, Bank/UPI settlements, and Tally XML export sync flag).
-- `GstReturnFilingLog` & `EInvoiceLog` (GSTR-1, GSTR-2B reconciliation status, GSTR-3B, IRN, AckNo, SignedQRCode).
-- `StaffAttendance`, `StaffAdvanceAndGroceryKhata`, `MonthlyPayroll` (Links base salary, overtime, salesman line-item commissions, minus leaves, advances, staff grocery bills, and `CashierShift` cash shortages).
+### [WO-203] Assigned to `DEV-3` (Batch/MRP/Expiry Engine, FEFO vs. Popup Resolver, Bulk-to-Retail Repacking & Shelf Gondola Tags)
+**Target Directory:** `apps/api/src/modules/inventory/`
+**Tasks:**
+1. Build `InventoryBatchService` & Controller:
+   - Manage `InventoryBatch` (`batchNumber`, `expiryDate`, `mrp`, `purchaseRate`, `netLandingCost`, `retailSellingPrice`, `wholesalePriceTier1`, `wholesalePriceTier2`, `clearanceDiscountPct`) and `BinStockBalance` (`GODOWN` vs. `SHOP_FLOOR` vs. `DAMAGED_RETURNABLE`).
+   - **POS Batch Resolution Logic (`resolveBatchForPosSale`):**
+     - Checks item's `batchTrackingMode` (falling back to `StoreConfig` default).
+     - If all active in-stock batches in `SHOP_FLOOR` share the same MRP & Selling Price (or mode is `AUTO_FEFO`), automatically returns the oldest expiring batch (**FEFO - First Expiry, First Out**).
+     - If multiple batches in stock have *different* MRPs/Selling Prices and mode is `POPUP_ON_MRP_DIFF`, returns `requiresBatchPopup: true` with the sorted list of active batches (`MRP`, `SellingPrice`, `ExpiryDate`, `AvailableQty`) for the cashier's `1/2` key selection.
+   - **Negative Stock Guardrail Check:** Enforces `ALLOW` (allows balance below 0 and flags for auto-reconciliation on next GRN), `WARN_PIN` (requires supervisor PIN token), or `BLOCK`.
+   - **Near-Expiry Alert & 1-Click Clearance Offer (`GET /api/v1/inventory/near-expiry?days=30|60|90` & `POST /api/v1/inventory/clearance-offer`):** Lists batches expiring within 30/60/90 days and lets the owner apply a batch-specific clearance discount %.
+2. **Bulk-to-Retail Repacking Engine (`POST /api/v1/inventory/repacking`):**
+   - Executes inside a strict Prisma `$transaction`:
+     - Deducts `bulkQtyConsumed` (e.g., `50.0000 kg`) from the Bulk Parent SKU's batch in `GODOWN`.
+     - Records `wastageQty` (e.g., `0.5000 kg`) to the Wastage Stock Ledger.
+     - Computes the exact new unit landing cost:
+       $$\text{New Unit Landing Cost} = \frac{(\text{Bulk Qty Consumed} \times \text{Bulk Unit Cost}) + \text{Packaging Material Cost}}{\text{Retail Packs Produced}}$$
+     - Creates/updates the Retail Child SKU's `InventoryBatch` with packed date, expiry date, new barcode, and adds `retailPacksProduced` (e.g., `49` packs of `1kg`) to `SHOP_FLOOR` (or `GODOWN`), returning a ZPL/TSPL print job payload for 49 barcode stickers!
 
 ---
 
-### [WO-105] Assigned to `DEV-5` (Plug-and-Play `StoreConfig` Engine, Shared DTOs & Verification Pipeline)
-**Objective:** Create `packages/shared-types` with the master Plug-and-Play configuration contract and validate the entire workspace build.
-**Exact Files to Create:**
-1. `packages/shared-types/src/store-config.interface.ts`: Strongly-typed TypeScript interfaces and default presets for every store-owner configurable toggle we locked in (Topology mode, Hardware config, Scale barcode prefix rule `20+SKU+Weight`, Blind close toggle, Batch popup vs. FEFO, Negative stock policy, GRN Fast vs. 3-Way Match, Remappable POS Function Keys `F1-F12`, Loyalty OTP toggle, GST Regular vs. Composition, BYOK AI Provider config).
-2. `packages/shared-types/src/index.ts`: Export all shared enums and config interfaces.
-3. Run `pnpm install`, `pnpm --filter @ti-erp/database prisma validate`, `pnpm --filter @ti-erp/database prisma generate`, and `pnpm -r typecheck` (or `build`).
+### [WO-204] Assigned to `DEV-4` (Inter-Branch Transfers with GIT, Internal Godown-to-Shelf Moves, Damages & Live Rack Cycle Counting)
+**Target Directory:** `apps/api/src/modules/stock-ops/` & `apps/hardware-bridge/src/`
+**Tasks:**
+1. **Internal Bin Transfer (`POST /api/v1/stock-ops/bin-transfer`):**
+   - Move stock between `GODOWN` -> `SHOP_FLOOR` or `SHOP_FLOOR` -> `DAMAGED_RETURNABLE` / `DAMAGED_SCRAP` with full immutable `StockLedger` entries.
+2. **Inter-Branch Stock Transfer (`StockTransferService`):**
+   - Full state machine: `INDENT_REQUESTED` -> `DISPATCHED_GIT` (deducts from Source Branch and holds in Goods-in-Transit virtual ledger, generates Delivery Challan / E-Way Bill payload) -> `RECEIVED_AT_BRANCH` (adds received qty to Destination Branch, logs any shortage/damage discrepancy for HO approval).
+3. **Live Cycle Counting (Audit Without Closing the Shop - `CycleCountService`):**
+   - `POST /api/v1/stock-ops/cycle-count/start`: Takes an instant **Stock Freeze Snapshot** (`systemFrozenQty`) for a chosen Rack/Bin or Category while POS counters keep billing.
+   - `POST /api/v1/stock-ops/cycle-count/:id/submit-counts`: Accepts scanned physical counts (`physicalCountedQty`), calculates `varianceQty`, and upon Manager Approval (`POST /api/v1/stock-ops/cycle-count/:id/approve`), posts adjustment entries to `BinStockBalance` and `StockLedger`.
+4. **ZPL/TSPL Barcode Sticker & Shelf-Edge Gondola Tag Generator (`apps/hardware-bridge/src/zpl-label.ts`):**
+   - Add ZPL/TSPL command generation to `apps/hardware-bridge` supporting:
+     - **50x25mm (2-up) & 38x25mm Repacking Barcode Stickers** (Store Name, Bilingual Item Name, Weight, Packed Date, Expiry Date, MRP, Selling Price, EAN-13/Code128 barcode).
+     - **Shelf-Edge Gondola Price Cards** (`MRP ₹X | Our Price ₹Y | You Save ₹Z!`).
 
 ---
 
-## PART 3: MANDATORY SENIOR DEV REPORT FORMAT (`agy-cli/WO_TO_HO_REPORT.md`)
-When `WO-101` through `WO-105` are complete, compile a single report at `agy-cli/WO_TO_HO_REPORT.md` containing:
-1. **Execution Summary Table** (`WO-101` to `WO-105` status, assigned dev, files created).
-2. **Exact Prisma Validation & TypeScript Build Output** (must show 0 errors).
-3. **Model & Field Count Audit** (confirming all models across `01_core_tenant_branch.prisma`, `02_inventory_procurement.prisma`, and `03_pos_crm_finance_hr.prisma` are validated and generated).
-4. **Git Commit Hash & Branch Status** after committing and pushing to `https://github.com/Ganesaperumal/TI-ERP.git`.
+### [WO-205] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: Back-Office Inventory, Product Master, Repacking Studio & Barcode Designer UI)
+**Target Directory:** `apps/pos-web/src/features/inventory/` & `apps/pos-web/src/features/settings/`
+**Tasks:**
+Build clean, keyboard-friendly, high-density supermarket management screens inside `apps/pos-web`:
+1. **Plug-and-Play Store Settings Page (`StoreConfigPage.tsx`):**
+   - Visual toggle switches for Single-Store vs. Multi-Branch, Regular vs. Composition GST, Batch Popup vs. Auto-FEFO, Negative Stock policy, Blind Cash Close, Weighing Scale Prefix rule, and a visual **Keyboard Shortcut Remapper (`F1`–`F12`)**.
+2. **Unified Product Master & Multi-UOM / Batch Drawer (`ProductMasterPage.tsx`):**
+   - High-speed searchable table supporting all 5 Product Types, Bilingual name input (`English` + `Regional`), Multi-UOM conversion rows, Multi-Barcode alias list, and live Bin-wise (`Godown` vs. `Shop Floor` vs. `Damaged`) Batch/MRP stock breakdown.
+3. **Bulk-to-Retail Repacking & Sticker Print Screen (`RepackingStudioPage.tsx`):**
+   - Select Bulk Sack Item/Batch -> Enter Bulk Qty Used, Retail Child Pack SKU, Packs Produced, Wastage, Packaging Cost -> Live preview of calculated Net Landing Cost & Margin % -> Click **"Convert & Print 49 Barcode Labels"**.
+4. **Live Cycle Count & Near-Expiry Clearance Screen (`StockAuditAndExpiryPage.tsx`):**
+   - Tabs for (A) 30/60/90-day Near-Expiry items with 1-click Clearance Discount, (B) Godown-to-Shelf Refill alerts, and (C) Live Rack Cycle Count entry.
+
+---
+
+## SECTION D: MANDATORY RETURN REPORT FORMAT (`agy-cli/WO_TO_HO_REPORT.md`)
+
+**CRITICAL RULE FOR BOSS'S UPLOAD TO GEMINI WEB:**
+Because Gemini Web reads plain-text `.md` files directly (whereas `.zip` archives compress text into binary streams), `agy-cli/WO_TO_HO_REPORT.md` MUST be a **self-contained, detailed plain-text Markdown audit report** so the Boss only needs to upload `agy-cli/WO_TO_HO_REPORT.md` to Head Office!
+
+When `REMOD-101` and `WO-201` through `WO-205` are complete, write `agy-cli/WO_TO_HO_REPORT.md` containing:
+1. **Executive Summary & Git Commit Hash** (Branch, Commit SHA, Timestamp).
+2. **Milestone 1 Re-Modification Verification (`REMOD-101`):**
+   - Confirm root duplicate `.md` files were removed.
+   - Paste the exact model names and `@db.Decimal` verification summary from `01_core_tenant_branch.prisma`, `02_inventory_procurement.prisma`, and `03_pos_crm_finance_hr.prisma`.
+3. **Work Order Completion Matrix (`WO-201` to `WO-205`):**
+   - List every created/modified file path with a summary of its implemented methods and routes.
+4. **Key Code & Algorithm Snippets Embedded in Report:**
+   - Paste the core implementation blocks of:
+     - `CatalogService.lookup()` (showing Weighing Scale EAN-13 `20+SKU+Weight` parsing)
+     - `InventoryBatchService.resolveBatchForPosSale()` (showing FEFO vs. MRP-Popup logic)
+     - `InventoryBatchService.executeRepackingJob()` (showing the Prisma `$transaction` and landing cost math)
+     - `zpl-label.ts` (showing 2-up sticker and Gondola tag generation)
+5. **Exact Build & Validation Command Logs:**
+   - Full terminal output of:
+     - `pnpm --filter @ti-erp/database prisma validate`
+     - `pnpm --filter @ti-erp/database prisma generate`
+     - `pnpm -r build` (or `pnpm -r typecheck`) — MUST show **0 errors** across `packages/shared-types`, `packages/database`, `apps/api`, `apps/hardware-bridge`, `apps/pos-web`, and `apps/cloud-admin`.

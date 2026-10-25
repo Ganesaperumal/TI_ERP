@@ -81,6 +81,7 @@ model Tenant {
   topology        TopologyModeEnum  @default(SINGLE_STORE)
   byokAiConfig    Json?
   syncVersion     BigInt            @default(1)
+  lastSyncedAt    DateTime?
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
@@ -121,6 +122,7 @@ model Branch {
   localServerIp      String?
   branchSettings     Json?           // Plug-and-play StoreConfig overrides
   syncVersion        BigInt          @default(1)
+  lastSyncedAt       DateTime?
   isActive           Boolean         @default(true)
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
@@ -161,6 +163,7 @@ model StorageBin {
   shelf       String?
   description String?
   syncVersion BigInt             @default(1)
+  lastSyncedAt DateTime?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -178,6 +181,8 @@ model Role {
   roleName           String
   permissions        Json      @default("[]")
   maskCostAndMargin  Boolean   @default(false)
+  syncVersion        BigInt    @default(1)
+  lastSyncedAt       DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -202,6 +207,7 @@ model User {
   salesmanCommissionRate  Decimal             @default(0) @db.Decimal(5, 2)
   isActive                Boolean             @default(true)
   syncVersion             BigInt              @default(1)
+  lastSyncedAt            DateTime?
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
 
@@ -231,6 +237,7 @@ model PosTerminal {
   edcTerminalId  String?
   isActive       Boolean        @default(true)
   syncVersion    BigInt         @default(1)
+  lastSyncedAt   DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -264,6 +271,7 @@ model CashierShift {
   zReportNumber                   String?
   zReportSummary                  Json?
   syncVersion                     BigInt          @default(1)
+  lastSyncedAt                    DateTime?
   createdAt                       DateTime        @default(now())
   updatedAt                       DateTime        @updatedAt
 
@@ -288,6 +296,8 @@ model AuditExceptionLog {
   referenceId     String?
   reason          String?
   metadata        Json?
+  syncVersion     BigInt                 @default(1)
+  lastSyncedAt    DateTime?
   timestamp       DateTime               @default(now())
 
   tenant          Tenant                 @relation(fields: [tenantId], references: [id])

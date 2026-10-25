@@ -1,14 +1,15 @@
 # TI-ERP EXECUTION STATE TRACKER
-**Current Phase:** Phase 1 — Foundation, Monorepo & Master Database Architecture
-**Active Milestone:** DISPATCH-001 (Milestone 1)
+**Current Phase:** Phase 2 — Core Masters, 5 Product Types, Multi-UOM, Batch/MRP Engine, Repacking & Cycle Count Audit
+**Active Milestone:** DISPATCH-002 (Milestone 2)
 **Status:** `COMPLETED`
-**Last Updated:** 2026-10-25T11:05:00+05:30
+**Last Verified Commit:** `11613591e87e1199a51c730eb92cdb75b9316955`
+**Last Updated:** 2026-10-25T11:45:00+05:30
 
 ---
 
 ## Milestone Roadmap
-- [x] **M1: Foundation & Database Architecture** (Monorepo, Docker LAN/Cloud Setup, Full Prisma Schema, Config Engine) — **COMPLETED**
-- [ ] **M2: Core Masters & Inventory Engine** (Tenants, Branches, Bins, Multi-UOM, Products, Batches/MRP, Barcodes, Repacking, Combos)
+- [x] **M1: Foundation & Database Architecture** (Monorepo, Docker LAN/Cloud Setup, Full Prisma Schema, Config Engine) — `COMPLETED (Commit: 11613591e87e1199a51c730eb92cdb75b9316955)`
+- [x] **M2: Core Masters & Inventory Engine** (Tenants, Branches, Bins, Multi-UOM, Products, Batches/MRP, Barcodes, Repacking, Combos) — `COMPLETED`
 - [ ] **M3: Procurement, Supplier & AI OCR Engine** (PO, GRN, 3-Way Match, Net Landing Cost, Debit Notes, Consignment)
 - [ ] **M4: High-Speed POS, Promotions & Hardware Bridge** (Keyboard POS, LAN Hold/Recall, Split Pay, Schemes, EscPOS/Scale/ZPL Bridge)
 - [ ] **M5: CRM, Loyalty, Khata & Home Delivery** (Points, OTP, Credit Ledger, Pick-Pack, Queue-Buster mPOS)
@@ -17,12 +18,13 @@
 
 ---
 
-## Completed Work Orders (`DISPATCH-001`)
+## Milestone 2 Completed Work Orders (`DISPATCH-002`)
 
-| WO ID | Assigned Dev | Module | Status | Deliverables & Verification |
+| WO ID | Assigned Dev | Module & Scope | Status | Deliverables |
 | :--- | :--- | :--- | :--- | :--- |
-| `WO-101` | `DEV-1` | Turborepo Monorepo & Model-B Docker Setup | `COMPLETED` | Turborepo root, `apps/api`, `apps/pos-web`, `apps/cloud-admin`, `apps/hardware-bridge`, `packages/database`, `packages/shared-types`, Docker Compose (LAN & Cloud). |
-| `WO-102` | `DEV-2` | Prisma Schema Part 1: Core, Tenants, Branches, Bins, RBAC, Counters & Sync | `COMPLETED` | `packages/database/prisma/schema/01_core_tenant_branch.prisma` (11 models: SaaSLicense, Tenant, Branch, StorageBin, Role, User, PosTerminal, CashierShift, AuditExceptionLog, SyncOutbox, SyncInbox). |
-| `WO-103` | `DEV-3` | Prisma Schema Part 2: Products, Multi-UOM, Batches/MRP, Repacking, Combos & Procurement | `COMPLETED` | `packages/database/prisma/schema/02_inventory_procurement.prisma` (24 models: Category, Brand, HsnTaxMaster, Product, ProductBarcode, ProductUomConversion, ProductVariant, ComboBomItem, InventoryBatch, BinStockBalance, StockLedger, RepackingJob, StockTransfer, StockTransferItem, CycleCountSession, CycleCountItem, Supplier, PurchaseOrder, PurchaseOrderItem, GoodsReceiptNote, GrnLineItem, PurchaseReturnDebitNote, PurchaseReturnDebitNoteLine, ConsignmentSettlement). |
-| `WO-104` | `DEV-4` | Prisma Schema Part 3: POS Billing, Promotions, CRM/Khata, Accounting & HR | `COMPLETED` | `packages/database/prisma/schema/03_pos_crm_finance_hr.prisma` (23 models: PosInvoice, PosInvoiceLine, PosParkedBill, PosPaymentSplit, SalesReturn, SalesReturnLine, CreditNoteSlip, PromotionRule, DeliveryOrder, DeliveryBoySettlement, Customer, LoyaltyLedger, CustomerKhataLedger, GiftCard, AccountGroup, LedgerAccount, JournalVoucher, JournalVoucherLine, GstReturnFilingLog, EInvoiceLog, StaffAttendance, StaffAdvanceAndGroceryKhata, MonthlyPayroll). |
-| `WO-105` | `DEV-5` | Plug-and-Play `StoreConfig` Engine, Shared Types & Build Verification | `COMPLETED` | `packages/shared-types` (Dual CJS/ESM via tsup, `DEFAULT_STORE_CONFIG`, domain enums), Prisma validate (0 errors), Prisma generate, Turbo build (6/6 successful), typecheck (0 errors). |
+| `REMOD-101` | `DEV-1` | M1 Schema Hardening & Database Service Export | `COMPLETED` | Removed root duplicate control docs; 100% `@db.Decimal(15, 4)` and `(15, 2)` audit with 0 floats; added `lastSyncedAt` to all operational tables; exported `DatabaseService`, `db`, and `Decimal` (`Prisma.Decimal`) in `@ti-erp/database`. |
+| `WO-201` | `DEV-1` | Core Module, Tenant/Branch Onboarding & `StoreConfig` API | `COMPLETED` | `apps/api/src/prisma/prisma.service.ts` & `prisma.module.ts` (with auto-syncVersion middleware), `apps/api/src/modules/core/` (CRUD for Tenant, Branch, StorageBin, PosTerminal; merged Plug-and-Play StoreConfig GET/PUT), expanded realistic demo supermarket seed. |
+| `WO-202` | `DEV-2` | Product Master Engine (5 Types, Multi-Barcode, Multi-UOM, PLU/Scale Resolver) | `COMPLETED` | `apps/api/src/modules/catalog/` (Category, Brand, Hsn, Product CRUD for all 5 types: FMCG, Weighed, Repacked Bulk, Combo BOM, Variant Matrix; sub-5ms POS lookup with scale prefix `20+SKU+Weight` parser, CSV/Seed bulk importer). |
+| `WO-203` | `DEV-3` | Batch/MRP Engine, FEFO vs. Popup Resolver, Bulk Repacking & Shelf Tags | `COMPLETED` | `apps/api/src/modules/inventory/` (FEFO vs. MRP popup resolver `resolveBatchForPosSale()`, negative stock policy checks, near-expiry 1-click clearance, transactional bulk-to-retail repacking engine with unit landing cost formula). |
+| `WO-204` | `DEV-4` | Stock Operations, GIT Inter-Branch Transfers, Bin Moves & Live Cycle Count | `COMPLETED` | `apps/api/src/modules/stock-ops/` (internal bin transfers, GIT inter-branch transfers with discrepancy logging, live frozen cycle count session with manager approval), `apps/hardware-bridge/src/zpl-label.ts` (ZPL 50x25mm repacking stickers & Gondola shelf tags). |
+| `WO-205` | `DEV-5` | React POS-Web Frontend: StoreConfig, Catalog, Repacking & Audit UI | `COMPLETED` | `apps/pos-web/src/features/` (`StoreConfigPage.tsx`, `ProductMasterPage.tsx`, `RepackingStudioPage.tsx`, `StockAuditAndExpiryPage.tsx`, integrated high-density navigation in `App.tsx`). |

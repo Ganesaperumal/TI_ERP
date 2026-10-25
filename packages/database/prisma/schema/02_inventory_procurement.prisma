@@ -97,6 +97,7 @@ model Category {
   name             String
   parentCategoryId String?
   syncVersion      BigInt      @default(1)
+  lastSyncedAt     DateTime?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
@@ -115,6 +116,7 @@ model Brand {
   code        String
   name        String
   syncVersion BigInt      @default(1)
+  lastSyncedAt DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -136,6 +138,7 @@ model HsnTaxMaster {
   cessRate    Decimal        @default(0) @db.Decimal(5, 2)
   cessPerUnit Decimal        @default(0) @db.Decimal(10, 2)
   syncVersion BigInt         @default(1)
+  lastSyncedAt DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -168,6 +171,7 @@ model Product {
   reorderVelocityDays Int                   @default(7)
   isActive            Boolean               @default(true)
   syncVersion         BigInt                @default(1)
+  lastSyncedAt        DateTime?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
@@ -207,6 +211,7 @@ model ProductBarcode {
   barcode     String    // EAN-13, UPC, Code128, Internal
   isPrimary   Boolean   @default(false)
   syncVersion BigInt    @default(1)
+  lastSyncedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -226,6 +231,7 @@ model ProductUomConversion {
   retailPrice       Decimal?  @db.Decimal(15, 2)
   wholesalePrice    Decimal?  @db.Decimal(15, 2)
   syncVersion       BigInt    @default(1)
+  lastSyncedAt      DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -245,6 +251,7 @@ model ProductVariant {
   style       String?
   barcode     String?
   syncVersion BigInt    @default(1)
+  lastSyncedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -263,6 +270,7 @@ model ComboBomItem {
   quantityRequired      Decimal       @db.Decimal(15, 4)
   priceApportionmentPct Decimal       @default(100) @db.Decimal(5, 2)
   syncVersion           BigInt        @default(1)
+  lastSyncedAt          DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
@@ -288,6 +296,7 @@ model InventoryBatch {
   clearanceDiscountPct  Decimal       @default(0) @db.Decimal(5, 2)
   isNearExpiryClearance Boolean       @default(false)
   syncVersion           BigInt        @default(1)
+  lastSyncedAt          DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
@@ -317,6 +326,7 @@ model BinStockBalance {
   batchId     String
   quantity    Decimal        @db.Decimal(15, 4)
   syncVersion BigInt         @default(1)
+  lastSyncedAt DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -344,6 +354,7 @@ model StockLedger {
   unitCost        Decimal               @db.Decimal(15, 4)
   notes           String?
   syncVersion     BigInt                @default(1)
+  lastSyncedAt    DateTime?
   createdAt       DateTime              @default(now())
 
   branch          Branch                @relation(fields: [branchId], references: [id])
@@ -371,6 +382,7 @@ model RepackingJob {
   laborAndOverheadCost   Decimal        @default(0) @db.Decimal(15, 2)
   calculatedUnitCost     Decimal        @db.Decimal(15, 4)
   syncVersion            BigInt         @default(1)
+  lastSyncedAt           DateTime?
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
@@ -397,6 +409,7 @@ model StockTransfer {
   dispatchedAt          DateTime?
   receivedAt            DateTime?
   syncVersion           BigInt                  @default(1)
+  lastSyncedAt          DateTime?
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
@@ -436,6 +449,7 @@ model CycleCountSession {
   completedAt        DateTime?
   approvedByUserId   String?
   syncVersion        BigInt               @default(1)
+  lastSyncedAt       DateTime?
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -483,6 +497,7 @@ model Supplier {
   isConsignmentVendor  Boolean                   @default(false)
   isActive             Boolean                   @default(true)
   syncVersion          BigInt                    @default(1)
+  lastSyncedAt         DateTime?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 
@@ -507,6 +522,7 @@ model PurchaseOrder {
   totalAmount     Decimal            @db.Decimal(15, 2)
   notes           String?
   syncVersion     BigInt             @default(1)
+  lastSyncedAt    DateTime?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -553,6 +569,7 @@ model GoodsReceiptNote {
   netPayable            Decimal       @db.Decimal(15, 2)
   marginGuardrailPassed Boolean       @default(true)
   syncVersion           BigInt        @default(1)
+  lastSyncedAt          DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
@@ -607,6 +624,7 @@ model PurchaseReturnDebitNote {
   totalAmount      Decimal              @db.Decimal(15, 2)
   notes            String?
   syncVersion      BigInt               @default(1)
+  lastSyncedAt     DateTime?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
@@ -645,6 +663,7 @@ model ConsignmentSettlement {
   settlementAmount  Decimal                         @db.Decimal(15, 2)
   status            ConsignmentSettlementStatusEnum @default(PENDING)
   syncVersion       BigInt                          @default(1)
+  lastSyncedAt      DateTime?
   createdAt         DateTime                        @default(now())
   updatedAt         DateTime                        @updatedAt
 

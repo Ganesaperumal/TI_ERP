@@ -1,9 +1,20 @@
-import { PrismaClient, TopologyModeEnum, GstRegimeEnum, BranchTypeEnum, StorageBinTypeEnum, AccountTypeEnum } from '@prisma/client';
+import {
+  PrismaClient,
+  TopologyModeEnum,
+  GstRegimeEnum,
+  BranchTypeEnum,
+  StorageBinTypeEnum,
+  AccountTypeEnum,
+  ProductTypeEnum,
+  BatchTrackingModeEnum,
+  NegativeStockRuleEnum,
+  ComboModeEnum,
+} from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding enterprise master data for TI-ERP...');
+  console.log('Seeding enterprise master data for TI-ERP (Milestone 2)...');
 
   // 1. SaaS License
   const license = await prisma.saaSLicense.upsert({
@@ -44,8 +55,8 @@ async function main() {
     },
   });
 
-  // 3. Master Branch
-  const branch = await prisma.branch.upsert({
+  // 3. Branches: Main Retail Store + Central Warehouse
+  const mainBranch = await prisma.branch.upsert({
     where: {
       tenantId_code: {
         tenantId: tenant.id,
@@ -69,33 +80,59 @@ async function main() {
     },
   });
 
-  // 4. Physical Storage Bins
-  const bins = [
+  const warehouseBranch = await prisma.branch.upsert({
+    where: {
+      tenantId_code: {
+        tenantId: tenant.id,
+        code: 'BR_WH',
+      },
+    },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      code: 'BR_WH',
+      name: 'TI Central Distribution Warehouse',
+      branchType: BranchTypeEnum.WAREHOUSE,
+      gstin: '33AAAAA0000A1Z5',
+      address: 'Plot 45, SIPCOT Industrial Park',
+      city: 'Perundurai',
+      stateCode: '33',
+      pincode: '638052',
+      phone: '+91 424 9876543',
+      regionalLanguage: 'ta-IN',
+      localServerIp: '192.168.1.200',
+    },
+  });
+
+  // 4. Physical Storage Bins per branch
+  const binDefs = [
     { code: 'BIN_GODOWN', name: 'Backroom Central Godown', type: StorageBinTypeEnum.GODOWN, aisle: 'A1', rack: 'R01' },
     { code: 'BIN_SHOP_FLOOR', name: 'Main Retail Floor Gondolas', type: StorageBinTypeEnum.SHOP_FLOOR, aisle: 'F1', rack: 'R01' },
     { code: 'BIN_DAMAGED_RET', name: 'Damaged Goods (Vendor Return)', type: StorageBinTypeEnum.DAMAGED_RETURNABLE, aisle: 'D1', rack: 'R99' },
     { code: 'BIN_SCRAP', name: 'Damaged Scrap Write-off', type: StorageBinTypeEnum.DAMAGED_SCRAP, aisle: 'D2', rack: 'R99' },
   ];
 
-  for (const b of bins) {
-    await prisma.storageBin.upsert({
-      where: {
-        branchId_binCode: {
-          branchId: branch.id,
-          binCode: b.code,
+  for (const branch of [mainBranch, warehouseBranch]) {
+    for (const b of binDefs) {
+      await prisma.storageBin.upsert({
+        where: {
+          branchId_binCode: {
+            branchId: branch.id,
+            binCode: `${branch.code}_${b.code}`,
+          },
         },
-      },
-      update: {},
-      create: {
-        tenantId: tenant.id,
-        branchId: branch.id,
-        binCode: b.code,
-        binType: b.type,
-        aisle: b.aisle,
-        rack: b.rack,
-        description: b.name,
-      },
-    });
+        update: {},
+        create: {
+          tenantId: tenant.id,
+          branchId: branch.id,
+          binCode: `${branch.code}_${b.code}`,
+          binType: b.type,
+          aisle: b.aisle,
+          rack: b.rack,
+          description: `${branch.name} - ${b.name}`,
+        },
+      });
+    }
   }
 
   // 5. Default Roles
@@ -142,7 +179,7 @@ async function main() {
     update: {},
     create: {
       tenantId: tenant.id,
-      branchId: branch.id,
+      branchId: mainBranch.id,
       roleId: adminRole.id,
       username: 'admin',
       passwordHash: 'argon2_mock_hash_admin',
@@ -162,7 +199,7 @@ async function main() {
     update: {},
     create: {
       tenantId: tenant.id,
-      branchId: branch.id,
+      branchId: mainBranch.id,
       roleId: cashierRole.id,
       username: 'cashier1',
       passwordHash: 'argon2_mock_hash_cashier',
@@ -171,25 +208,28 @@ async function main() {
     },
   });
 
-  // 7. Master POS Terminal
-  await prisma.posTerminal.upsert({
-    where: {
-      branchId_terminalCode: {
-        branchId: branch.id,
-        terminalCode: 'POS-01',
+  // 7. 3 POS Counters
+  const counters = ['POS-01', 'POS-02', 'POS-03'];
+  for (const counter of counters) {
+    await prisma.posTerminal.upsert({
+      where: {
+        branchId_terminalCode: {
+          branchId: mainBranch.id,
+          terminalCode: counter,
+        },
       },
-    },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      branchId: branch.id,
-      terminalCode: 'POS-01',
-      printerIp: '192.168.1.200',
-      scalePort: '/dev/ttyUSB0',
-      edcTerminalId: 'TERM_POS_01',
-      hardwareLocked: false,
-    },
-  });
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        branchId: mainBranch.id,
+        terminalCode: counter,
+        printerIp: '192.168.1.200',
+        scalePort: '/dev/ttyUSB0',
+        edcTerminalId: `EDC_${counter}`,
+        hardwareLocked: false,
+      },
+    });
+  }
 
   // 8. Standard GST HSN Master
   const hsnEntries = [
@@ -200,8 +240,9 @@ async function main() {
     { code: '2202', cgst: 14.0, sgst: 14.0, igst: 28.0, desc: 'Aerated Drinks & Energy Drinks (28% GST)' },
   ];
 
+  const hsnMap: Record<string, string> = {};
   for (const h of hsnEntries) {
-    await prisma.hsnTaxMaster.upsert({
+    const record = await prisma.hsnTaxMaster.upsert({
       where: {
         tenantId_hsnCode: {
           tenantId: tenant.id,
@@ -218,53 +259,277 @@ async function main() {
         igstRate: h.igst,
       },
     });
+    hsnMap[h.code] = record.id;
   }
 
-  // 9. Standard Chart of Accounts Groups
-  const groupAssets = await prisma.accountGroup.upsert({
-    where: { tenantId_groupName: { tenantId: tenant.id, groupName: 'Current Assets' } },
+  // 9. Categories and Brands
+  const catGrocery = await prisma.category.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'CAT_GROCERY' } },
     update: {},
-    create: { tenantId: tenant.id, groupName: 'Current Assets', groupType: AccountTypeEnum.ASSET },
+    create: { tenantId: tenant.id, code: 'CAT_GROCERY', name: 'Grocery & Staples' },
   });
 
-  const groupLiabilities = await prisma.accountGroup.upsert({
-    where: { tenantId_groupName: { tenantId: tenant.id, groupName: 'Current Liabilities' } },
+  const catSnacks = await prisma.category.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'CAT_SNACKS' } },
     update: {},
-    create: { tenantId: tenant.id, groupName: 'Current Liabilities', groupType: AccountTypeEnum.LIABILITY },
+    create: { tenantId: tenant.id, code: 'CAT_SNACKS', name: 'Snacks & Biscuits' },
   });
 
-  const groupRevenue = await prisma.accountGroup.upsert({
-    where: { tenantId_groupName: { tenantId: tenant.id, groupName: 'Operating Revenue' } },
+  const catApparel = await prisma.category.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'CAT_APPAREL' } },
     update: {},
-    create: { tenantId: tenant.id, groupName: 'Operating Revenue', groupType: AccountTypeEnum.INCOME },
+    create: { tenantId: tenant.id, code: 'CAT_APPAREL', name: 'Apparel & Fashion' },
   });
 
-  // 10. Ledger Accounts
-  await prisma.ledgerAccount.upsert({
-    where: { tenantId_code: { tenantId: tenant.id, code: '1001' } },
+  const brandParle = await prisma.brand.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'BR_PARLE' } },
     update: {},
-    create: { tenantId: tenant.id, groupId: groupAssets.id, code: '1001', accountName: 'Cash In Hand (Store Till)' },
+    create: { tenantId: tenant.id, code: 'BR_PARLE', name: 'Parle' },
   });
 
-  await prisma.ledgerAccount.upsert({
-    where: { tenantId_code: { tenantId: tenant.id, code: '1002' } },
+  const brandHeritage = await prisma.brand.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'BR_HERITAGE' } },
     update: {},
-    create: { tenantId: tenant.id, groupId: groupAssets.id, code: '1002', accountName: 'HDFC Bank Settlement Account' },
+    create: { tenantId: tenant.id, code: 'BR_HERITAGE', name: 'Heritage Staples' },
   });
 
-  await prisma.ledgerAccount.upsert({
-    where: { tenantId_code: { tenantId: tenant.id, code: '3001' } },
+  // 10. Sample Products Across ALL 5 Product Types
+  // Type 1: STANDARD_FMCG with Multi-Barcode Aliases
+  const pFmcg = await prisma.product.upsert({
+    where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-FMCG-001' } },
     update: {},
-    create: { tenantId: tenant.id, groupId: groupRevenue.id, code: '3001', accountName: 'Retail POS Sales Account' },
+    create: {
+      tenantId: tenant.id,
+      skuCode: 'SKU-FMCG-001',
+      nameEn: 'Parle-G Gold Glucose Biscuit 1kg',
+      nameRegional: 'பார்லே-ஜி பிஸ்கட் 1கிலோ',
+      shortPluCode: '101',
+      categoryId: catSnacks.id,
+      brandId: brandParle.id,
+      hsnId: hsnMap['2106'],
+      productType: ProductTypeEnum.STANDARD_FMCG,
+      baseUom: 'PACK',
+      batchTrackingMode: BatchTrackingModeEnum.POPUP_ON_MRP_DIFF,
+      negativeStockRule: NegativeStockRuleEnum.WARN_PIN,
+      minStock: 20,
+      maxStock: 200,
+    },
   });
 
-  await prisma.ledgerAccount.upsert({
-    where: { tenantId_code: { tenantId: tenant.id, code: '2001' } },
+  // Barcode aliases (Factory EAN + Internal Store Barcode)
+  await prisma.productBarcode.upsert({
+    where: { tenantId_barcode: { tenantId: tenant.id, barcode: '8901719114138' } },
     update: {},
-    create: { tenantId: tenant.id, groupId: groupLiabilities.id, code: '2001', accountName: 'GST Output Liability' },
+    create: { tenantId: tenant.id, productId: pFmcg.id, barcode: '8901719114138', isPrimary: true },
+  });
+  await prisma.productBarcode.upsert({
+    where: { tenantId_barcode: { tenantId: tenant.id, barcode: 'PARLEG1KG' } },
+    update: {},
+    create: { tenantId: tenant.id, productId: pFmcg.id, barcode: 'PARLEG1KG', isPrimary: false },
   });
 
-  console.log('Master seed complete successfully!');
+  // Type 2: WEIGHED_LOOSE (Produce with 3-digit PLU & Scale prefix support)
+  const pLoose = await prisma.product.upsert({
+    where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-PROD-002' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      skuCode: 'SKU-PROD-002',
+      nameEn: 'Farm Fresh Potato',
+      nameRegional: 'உருளைக்கிழங்கு',
+      shortPluCode: '201',
+      categoryId: catGrocery.id,
+      hsnId: hsnMap['0000'],
+      productType: ProductTypeEnum.WEIGHED_LOOSE,
+      baseUom: 'KG',
+      batchTrackingMode: BatchTrackingModeEnum.AUTO_FEFO,
+      negativeStockRule: NegativeStockRuleEnum.ALLOW,
+    },
+  });
+
+  // Barcode alias for PLU 201
+  await prisma.productBarcode.upsert({
+    where: { tenantId_barcode: { tenantId: tenant.id, barcode: '2000201' } },
+    update: {},
+    create: { tenantId: tenant.id, productId: pLoose.id, barcode: '2000201', isPrimary: true },
+  });
+
+  // Type 3: REPACKED_BULK (Bulk Rice 50kg Sack -> Retail 1kg Pouch)
+  const pBulkSack = await prisma.product.upsert({
+    where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-RICE-50KG' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      skuCode: 'SKU-RICE-50KG',
+      nameEn: 'Sona Masoori Rice Raw 50kg Sack (Bulk)',
+      nameRegional: 'சோனா மசூரி அரிசி 50கிலோ மூட்டை',
+      categoryId: catGrocery.id,
+      brandId: brandHeritage.id,
+      hsnId: hsnMap['1006'],
+      productType: ProductTypeEnum.REPACKED_BULK,
+      baseUom: 'KG',
+      batchTrackingMode: BatchTrackingModeEnum.AUTO_FEFO,
+    },
+  });
+
+  const pRetailPack = await prisma.product.upsert({
+    where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-RICE-1KG' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      skuCode: 'SKU-RICE-1KG',
+      nameEn: 'Sona Masoori Rice 1kg Retail Pouch',
+      nameRegional: 'சோனா மசூரி அரிசி 1கிலோ',
+      categoryId: catGrocery.id,
+      brandId: brandHeritage.id,
+      hsnId: hsnMap['1006'],
+      productType: ProductTypeEnum.STANDARD_FMCG,
+      baseUom: 'PACK',
+    },
+  });
+
+  await prisma.productBarcode.upsert({
+    where: { tenantId_barcode: { tenantId: tenant.id, barcode: '8901234567011' } },
+    update: {},
+    create: { tenantId: tenant.id, productId: pRetailPack.id, barcode: '8901234567011', isPrimary: true },
+  });
+
+  // Type 4: COMBO_KIT (Breakfast Combo Kit with Bill-of-Materials)
+  const pCombo = await prisma.product.upsert({
+    where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-COMBO-001' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      skuCode: 'SKU-COMBO-001',
+      nameEn: 'Healthy Breakfast Combo Pack',
+      nameRegional: 'காலை உணவு காம்போ',
+      categoryId: catSnacks.id,
+      hsnId: hsnMap['2106'],
+      productType: ProductTypeEnum.COMBO_KIT,
+      baseUom: 'KIT',
+    },
+  });
+
+  await prisma.comboBomItem.deleteMany({ where: { parentComboProductId: pCombo.id } });
+  await prisma.comboBomItem.create({
+    data: {
+      tenantId: tenant.id,
+      parentComboProductId: pCombo.id,
+      childProductId: pFmcg.id,
+      comboMode: ComboModeEnum.PRE_PACKED,
+      quantityRequired: 2,
+      priceApportionmentPct: 50,
+    },
+  });
+
+  // Type 5: VARIANT_MATRIX (Apparel Polo T-Shirt with Size and Color matrix)
+  const pMatrix = await prisma.product.upsert({
+    where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-POLO-SHIRT' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      skuCode: 'SKU-POLO-SHIRT',
+      nameEn: 'TI Classic Cotton Polo T-Shirt',
+      nameRegional: 'டி-சர்ட்',
+      categoryId: catApparel.id,
+      hsnId: hsnMap['2106'],
+      productType: ProductTypeEnum.VARIANT_MATRIX,
+      baseUom: 'PCS',
+    },
+  });
+
+  const variants = [
+    { sku: 'POLO-M-NAVY', size: 'M', color: 'Navy Blue', barcode: '890700101' },
+    { sku: 'POLO-L-NAVY', size: 'L', color: 'Navy Blue', barcode: '890700102' },
+    { sku: 'POLO-XL-NAVY', size: 'XL', color: 'Navy Blue', barcode: '890700103' },
+  ];
+
+  for (const v of variants) {
+    await prisma.productVariant.upsert({
+      where: { tenantId_variantSku: { tenantId: tenant.id, variantSku: v.sku } },
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        productId: pMatrix.id,
+        variantSku: v.sku,
+        size: v.size,
+        color: v.color,
+        barcode: v.barcode,
+      },
+    });
+  }
+
+  // 11. Initial Batches in Main Branch
+  await prisma.inventoryBatch.upsert({
+    where: {
+      branchId_productId_batchNumber: {
+        branchId: mainBranch.id,
+        productId: pFmcg.id,
+        batchNumber: 'B-PARLE-OCT26',
+      },
+    },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      branchId: mainBranch.id,
+      productId: pFmcg.id,
+      batchNumber: 'B-PARLE-OCT26',
+      expiryDate: new Date('2027-04-30'),
+      mrp: 120.0,
+      purchaseRate: 90.0,
+      netLandingCost: 95.0,
+      retailSellingPrice: 110.0,
+      wholesalePriceTier1: 102.0,
+      wholesalePriceTier2: 98.0,
+    },
+  });
+
+  await prisma.inventoryBatch.upsert({
+    where: {
+      branchId_productId_batchNumber: {
+        branchId: mainBranch.id,
+        productId: pLoose.id,
+        batchNumber: 'B-POTATO-TODAY',
+      },
+    },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      branchId: mainBranch.id,
+      productId: pLoose.id,
+      batchNumber: 'B-POTATO-TODAY',
+      expiryDate: new Date('2026-11-05'),
+      mrp: 40.0,
+      purchaseRate: 26.0,
+      netLandingCost: 28.0,
+      retailSellingPrice: 36.0,
+    },
+  });
+
+  // Bulk Sack Batch
+  await prisma.inventoryBatch.upsert({
+    where: {
+      branchId_productId_batchNumber: {
+        branchId: mainBranch.id,
+        productId: pBulkSack.id,
+        batchNumber: 'B-RICE-SACK-01',
+      },
+    },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      branchId: mainBranch.id,
+      productId: pBulkSack.id,
+      batchNumber: 'B-RICE-SACK-01',
+      expiryDate: new Date('2027-10-01'),
+      mrp: 2600.0,
+      purchaseRate: 2000.0,
+      netLandingCost: 2100.0,
+      retailSellingPrice: 2450.0,
+    },
+  });
+
+  console.log('Master seed complete successfully across all 5 Product Types!');
 }
 
 main()

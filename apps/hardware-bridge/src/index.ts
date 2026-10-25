@@ -1,6 +1,7 @@
 import http from 'http';
 import { EscPosHelper } from './escpos';
 import { SerialScaleParser } from './serial-scale';
+import { ZplLabelGenerator } from './zpl-label';
 import { DEFAULT_STORE_CONFIG } from '@ti-erp/shared-types';
 
 const PORT = Number(process.env.HARDWARE_BRIDGE_PORT) || 8089;
@@ -58,4 +59,4 @@ server.listen(PORT, () => {
   console.log(`Thermal printer configured at: ${DEFAULT_STORE_CONFIG.hardware.receiptPrinter.ipAddress}:${DEFAULT_STORE_CONFIG.hardware.receiptPrinter.port}`);
 });
 
-export { EscPosHelper, SerialScaleParser };
+export { EscPosHelper, SerialScaleParser, ZplLabelGenerator };

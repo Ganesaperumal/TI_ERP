@@ -135,6 +135,7 @@ export interface LoyaltyKhataConfig {
   defaultCreditLimit: number;
   autoFirstOfMonthWhatsAppStatement: boolean;
   sendUpiPaymentLinkInStatement: boolean;
+  merchantUpiVpa?: string;
 }
 
 export interface GstTaxConfig {
@@ -289,6 +290,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
     defaultCreditLimit: 5000,
     autoFirstOfMonthWhatsAppStatement: true,
     sendUpiPaymentLinkInStatement: true,
+    merchantUpiVpa: 'tierp.store@okhdfcbank',
   },
   gst: {
     regime: GstRegime.REGULAR,

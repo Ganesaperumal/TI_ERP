@@ -1,11 +1,15 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { TenantBranchService } from '../../core/tenant-branch.service';
 import { RecordKhataRepaymentDto, ValidateKhataCheckoutDto } from './khata-giftcard.dto';
 import { Decimal, KhataTxnTypeEnum } from '@ti-erp/database';
 
 @Injectable()
 export class CustomerKhataService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantBranchService: TenantBranchService,
+  ) {}
 
   /**
    * Validate Customer Credit Khata Eligibility before POS Checkout
@@ -162,10 +166,16 @@ export class CustomerKhataService {
   /**
    * Automated 1st-of-Month WhatsApp Statement & Dynamic UPI Collection Link
    */
-  async sendWhatsAppStatement(tenantId: string, customerId: string) {
+  async sendWhatsAppStatement(tenantId: string, customerId: string, branchId?: string) {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       include: {
+        tenant: true,
+        invoices: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          select: { branchId: true },
+        },
         khataLedgers: {
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -174,12 +184,41 @@ export class CustomerKhataService {
     });
     if (!customer) throw new NotFoundException('Customer not found');
 
+    // Resolve branch for store configuration
+    let targetBranchId: string | undefined = branchId || customer.invoices[0]?.branchId;
+    if (!targetBranchId) {
+      const defaultBranch = await this.prisma.branch.findFirst({
+        where: { tenantId },
+      });
+      targetBranchId = defaultBranch?.id;
+    }
+
+    let merchantUpiVpa = 'tierp.store@okhdfcbank';
+    let storeName = customer.tenant?.name || 'TI Supermarket';
+
+    if (targetBranchId) {
+      try {
+        const storeConfig = await this.tenantBranchService.getMergedStoreConfig(targetBranchId);
+        const branch = await this.prisma.branch.findUnique({ where: { id: targetBranchId } });
+        if (storeConfig.loyaltyKhata?.merchantUpiVpa) {
+          merchantUpiVpa = storeConfig.loyaltyKhata.merchantUpiVpa;
+        }
+        if (storeConfig.hardware?.receiptPrinter?.headerLines?.[0]) {
+          storeName = storeConfig.hardware.receiptPrinter.headerLines[0];
+        } else if (branch?.name) {
+          storeName = branch.name;
+        }
+      } catch {
+        // Fall back to tenant name and default UPI
+      }
+    }
+
     const outstandingAmt = customer.khataCurrentBalance;
 
     // NPCI Dynamic UPI Intent URI
     // upi://pay?pa=store@upi&pn=Store_Name&am=OUTSTANDING_BALANCE&cu=INR&tn=Monthly_Grocery_Khata_Settlement
-    const upiUri = `upi://pay?pa=tierp.store@okhdfcbank&pn=${encodeURIComponent(
-      'TI Supermarket',
+    const upiUri = `upi://pay?pa=${encodeURIComponent(merchantUpiVpa)}&pn=${encodeURIComponent(
+      storeName,
     )}&am=${outstandingAmt.toFixed(2)}&cu=INR&tn=${encodeURIComponent(
       `Khata-${customer.phone}`,
     )}`;
@@ -191,7 +230,7 @@ export class CustomerKhataService {
       data: { whatsAppStatementSentAt: now },
     });
 
-    const statementSummary = `Dear ${customer.name},\nYour Monthly Grocery Khata Statement is ready:\nOutstanding Balance: ₹${outstandingAmt.toFixed(
+    const statementSummary = `Dear ${customer.name},\nYour Monthly Grocery Khata Statement from ${storeName} is ready:\nOutstanding Balance: ₹${outstandingAmt.toFixed(
       2,
     )}\nPlease settle via UPI using the link below:\n${upiUri}\nThank you for shopping with us!`;
 
@@ -200,6 +239,8 @@ export class CustomerKhataService {
       customerId: customer.id,
       customerName: customer.name,
       phone: customer.phone,
+      merchantUpiVpa,
+      storeName,
       outstandingBalance: Number(outstandingAmt),
       upiPaymentLink: upiUri,
       messagePayload: statementSummary,

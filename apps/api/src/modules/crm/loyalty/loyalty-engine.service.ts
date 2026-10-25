@@ -172,4 +172,20 @@ export class LoyaltyEngineService {
       verificationToken: `OTP_VERIFIED_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     };
   }
+
+  /**
+   * Proportionate Loyalty Point Clawback Calculator for Sales Returns
+   * Points to Claw Back = round(Original Points Earned * (Total Refund Amount / Original Invoice Net Payable))
+   */
+  calculatePointsClawback(
+    originalPointsEarned: Decimal,
+    totalRefundAmount: Decimal,
+    originalNetPayable: Decimal,
+  ): Decimal {
+    if (originalNetPayable.lessThanOrEqualTo(0) || originalPointsEarned.lessThanOrEqualTo(0)) {
+      return new Decimal(0);
+    }
+    const clawback = originalPointsEarned.mul(totalRefundAmount).div(originalNetPayable).toDecimalPlaces(2);
+    return Decimal.min(originalPointsEarned, clawback);
+  }
 }

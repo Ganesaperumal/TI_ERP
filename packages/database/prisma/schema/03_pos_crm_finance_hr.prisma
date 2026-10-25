@@ -60,6 +60,7 @@ enum LoyaltyTxnTypeEnum {
   REDEEM
   EXPIRED
   MANUAL_ADJUST
+  POINTS_REVERSED_ON_RETURN
 }
 
 enum KhataTxnTypeEnum {
@@ -81,7 +82,17 @@ enum VoucherTypeEnum {
   GRN_PURCHASE
   EXPENSE
   BANK_SETTLEMENT
+  SALARY_PAYROLL
+  INVENTORY_WRITEOFF
   MANUAL
+  SALES
+  PURCHASE
+  RECEIPT
+  PAYMENT
+  CONTRA
+  JOURNAL
+  DEBIT_NOTE
+  CREDIT_NOTE
 }
 
 enum RefundModeEnum {
@@ -94,6 +105,8 @@ enum AttendanceStatusEnum {
   PRESENT
   ABSENT
   HALF_DAY
+  LATE
+  WEEKLY_OFF
   LEAVE
 }
 
@@ -555,6 +568,9 @@ model StaffAttendance {
   checkOutTime      DateTime?
   biometricVerified Boolean              @default(false)
   selfiePhotoUrl    String?
+  overtimeHours     Decimal              @default(0) @db.Decimal(5, 2)
+  latitude          Decimal?             @db.Decimal(10, 7)
+  longitude         Decimal?             @db.Decimal(10, 7)
   status            AttendanceStatusEnum @default(PRESENT)
   syncVersion       BigInt               @default(1)
   lastSyncedAt      DateTime?

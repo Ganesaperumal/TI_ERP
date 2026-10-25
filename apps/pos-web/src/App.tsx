@@ -11,12 +11,16 @@ import { CustomerDualDisplayPage } from './features/pos/CustomerDualDisplayPage'
 import { ShiftAndZReportPage } from './features/pos/ShiftAndZReportPage';
 import { CrmLoyaltyAndKhataPage } from './features/crm/CrmLoyaltyAndKhataPage';
 import { DeliveryAndQueueBusterPage } from './features/fulfillment/DeliveryAndQueueBusterPage';
+import { FinanceGstAndTallyPage } from './features/accounting/FinanceGstAndTallyPage';
+import { HrAttendanceAndPayrollPage } from './features/hr/HrAttendanceAndPayrollPage';
 
 type AppTab =
   | 'POS'
-  | 'SHIFT_REGISTER'
   | 'CRM_LOYALTY'
   | 'DELIVERY_MPOS'
+  | 'FINANCE_GST'
+  | 'HR_PAYROLL'
+  | 'SHIFT_REGISTER'
   | 'GRN_ENTRY'
   | 'AUTO_REORDER'
   | 'SUPPLIERS_RETURNS'
@@ -33,6 +37,8 @@ export const App: React.FC = () => {
     { id: 'POS', label: '🛒 Cashier POS (F1-F12)' },
     { id: 'CRM_LOYALTY', label: '👑 CRM & Khata' },
     { id: 'DELIVERY_MPOS', label: '📦 Delivery & mPOS' },
+    { id: 'FINANCE_GST', label: '📊 Finance, GST & Tally' },
+    { id: 'HR_PAYROLL', label: '👥 HR & Payroll' },
     { id: 'SHIFT_REGISTER', label: '🔒 Register & Z-Report' },
     { id: 'GRN_ENTRY', label: '⚡ Smart GRN & Costing' },
     { id: 'AUTO_REORDER', label: '🤖 Auto-Reorder & PO' },
@@ -94,6 +100,8 @@ export const App: React.FC = () => {
         {activeTab === 'POS' && <PosBillingScreen />}
         {activeTab === 'CRM_LOYALTY' && <CrmLoyaltyAndKhataPage />}
         {activeTab === 'DELIVERY_MPOS' && <DeliveryAndQueueBusterPage />}
+        {activeTab === 'FINANCE_GST' && <FinanceGstAndTallyPage />}
+        {activeTab === 'HR_PAYROLL' && <HrAttendanceAndPayrollPage />}
         {activeTab === 'SHIFT_REGISTER' && <ShiftAndZReportPage />}
         {activeTab === 'DUAL_DISPLAY' && <CustomerDualDisplayPage />}
         {activeTab === 'GRN_ENTRY' && <GrnEntryPage />}

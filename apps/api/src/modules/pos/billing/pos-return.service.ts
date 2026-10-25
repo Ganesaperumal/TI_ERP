@@ -11,6 +11,7 @@ import {
   RefundModeEnum,
   CreditNoteStatusEnum,
   AuditExceptionTypeEnum,
+  LoyaltyTxnTypeEnum,
 } from '@ti-erp/database';
 import { ProcessSalesReturnDto } from './billing.dto';
 
@@ -169,6 +170,66 @@ export class PosReturnService {
       // Handle Refund Mode Outputs
       let creditNoteSlip = null;
 
+      // REMOD-501B: Proportionate Loyalty Point Reversal on Sales Return
+      let loyaltyClawbackResult: { pointsClawedBack: number; balanceAfter: number } | null = null;
+      if (dto.originalInvoiceId) {
+        const originalInvoice = await tx.posInvoice.findUnique({
+          where: { id: dto.originalInvoiceId },
+          include: {
+            loyaltyLedgers: {
+              where: { transactionType: LoyaltyTxnTypeEnum.EARN },
+            },
+          },
+        });
+
+        if (originalInvoice && originalInvoice.customerId && originalInvoice.netPayable.greaterThan(0)) {
+          const originalEarned = originalInvoice.loyaltyLedgers.reduce(
+            (sum, l) => sum.add(l.points),
+            new Decimal(0),
+          );
+
+          if (originalEarned.greaterThan(0)) {
+            // Formula: round(Original Points Earned * (Total Refund Amount / Original Invoice Net Payable))
+            const pointsToClawback = originalEarned
+              .mul(totalRefundAmount)
+              .div(originalInvoice.netPayable)
+              .toDecimalPlaces(2);
+
+            const effectiveClawback = Decimal.min(originalEarned, pointsToClawback);
+
+            if (effectiveClawback.greaterThan(0)) {
+              const customer = await tx.customer.findUnique({
+                where: { id: originalInvoice.customerId },
+              });
+              if (customer) {
+                const newBalance = Decimal.max(0, customer.loyaltyPointsBalance.sub(effectiveClawback));
+                await tx.customer.update({
+                  where: { id: customer.id },
+                  data: { loyaltyPointsBalance: newBalance },
+                });
+
+                await tx.loyaltyLedger.create({
+                  data: {
+                    customerId: customer.id,
+                    invoiceId: originalInvoice.id,
+                    transactionType: LoyaltyTxnTypeEnum.POINTS_REVERSED_ON_RETURN,
+                    points: effectiveClawback,
+                    balanceAfter: newBalance,
+                    otpVerified: false,
+                    notes: `Loyalty points clawback for Sales Return ${returnNumber} (Refund: ₹${totalRefundAmount.toFixed(2)})`,
+                  },
+                });
+
+                loyaltyClawbackResult = {
+                  pointsClawedBack: Number(effectiveClawback),
+                  balanceAfter: Number(newBalance),
+                };
+              }
+            }
+          }
+        }
+      }
+
       if (dto.refundMode === RefundModeEnum.CREDIT_NOTE) {
         // Generate barcoded CreditNoteSlip valid for 90 days
         const slipNumber = `CN-${dateStr}-${randSuffix}`;
@@ -210,6 +271,7 @@ export class PosReturnService {
         creditNoteSlip,
         totalRefundAmount: Number(totalRefundAmount),
         refundMode: dto.refundMode,
+        loyaltyClawback: loyaltyClawbackResult,
       };
     });
   }

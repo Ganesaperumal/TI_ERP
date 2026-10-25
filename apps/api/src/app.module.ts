@@ -10,6 +10,8 @@ import { ProcurementModule } from './modules/procurement/procurement.module';
 import { AiCopilotModule } from './modules/ai-copilot/ai-copilot.module';
 import { PosModule } from './modules/pos/pos.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { AccountingModule } from './modules/accounting/accounting.module';
+import { HrModule } from './modules/hr/hr.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { CrmModule } from './modules/crm/crm.module';
     AiCopilotModule,
     PosModule,
     CrmModule,
+    AccountingModule,
+    HrModule,
   ],
   controllers: [AppController],
   providers: [AppService],

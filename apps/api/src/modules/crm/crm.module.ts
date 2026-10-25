@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CoreModule } from '../core/core.module';
 import { CustomerService } from './loyalty/customer.service';
 import { LoyaltyEngineService } from './loyalty/loyalty-engine.service';
 import { LoyaltyController } from './loyalty/loyalty.controller';
@@ -10,6 +11,7 @@ import { DigitalReceiptService } from './campaigns/digital-receipt.service';
 import { CampaignsController } from './campaigns/campaigns.controller';
 
 @Module({
+  imports: [CoreModule],
   controllers: [
     LoyaltyController,
     KhataGiftCardController,

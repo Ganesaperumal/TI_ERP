@@ -537,5 +537,6 @@ $ turbo run build
 ## 6. GIT COMMIT & REMOTE PUSH CONFIRMATION
 - **Branch:** `main`
 - **Origin:** `https://github.com/Ganesaperumal/TI_ERP.git`
+- **Verified Commit SHA:** `b2d7739a53faa6f2089bf640297a7ae2654ab7ff`
 - **Commit Message:** `feat: DISPATCH-003 milestone 3 - procurement, auto-reorder, GRN, margin guardrail, consignment and AI OCR`
 - **All control documents preserved strictly in `agy-cli/`**.

@@ -2,7 +2,7 @@
 **Current Phase:** Phase 3 — Procurement, Auto-Reorder, Fast & 3-Way Match GRN, Net Landing Cost, Margin Guardrail, Consignment & BYOK AI OCR
 **Active Milestone:** DISPATCH-003 (Milestone 3)
 **Status:** `COMPLETED`
-**Last Verified Commit:** `PENDING_GIT_COMMIT`
+**Last Verified Commit:** `b2d7739a53faa6f2089bf640297a7ae2654ab7ff`
 **Last Updated:** 2026-10-25T12:05:00+05:30
 
 ---

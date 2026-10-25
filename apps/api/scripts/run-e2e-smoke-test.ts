@@ -92,6 +92,95 @@ async function runSupermarketSmokeTest() {
     const tenantId = mainBranch.tenantId;
     const branchId = mainBranch.id;
 
+    // =========================================================================
+    // DETERMINISTIC TEST SLATE RESET (REMOD-801B)
+    // Ensures clean zero-drift execution whether run once or 10 times consecutively
+    // =========================================================================
+    await prisma.creditNoteSlip.deleteMany({ where: { tenantId } });
+    await prisma.salesReturnLine.deleteMany({ where: { salesReturn: { tenantId } } });
+    await prisma.salesReturn.deleteMany({ where: { tenantId } });
+    await prisma.posPaymentSplit.deleteMany({ where: { invoice: { tenantId } } });
+    await prisma.posInvoiceLine.deleteMany({ where: { invoice: { tenantId } } });
+    await prisma.posInvoice.deleteMany({ where: { tenantId } });
+    await prisma.repackingJob.deleteMany({ where: { tenantId } });
+    await prisma.staffAdvanceAndGroceryKhata.deleteMany({ where: { tenantId } });
+    await prisma.auditExceptionLog.deleteMany({ where: { tenantId } });
+    await prisma.journalVoucherLine.deleteMany({ where: { voucher: { tenantId } } });
+    await prisma.journalVoucher.deleteMany({ where: { tenantId } });
+    await prisma.cashierShift.deleteMany({ where: { tenantId } });
+    await prisma.grnLineItem.deleteMany({ where: { grn: { tenantId } } });
+    await prisma.goodsReceiptNote.deleteMany({ where: { tenantId } });
+    await prisma.loyaltyLedger.deleteMany({ where: { customer: { tenantId } } });
+    await prisma.monthlyPayroll.deleteMany({ where: { tenantId } });
+    await prisma.stockLedger.deleteMany({ where: { tenantId } });
+
+    // Clean smoke test dynamic batches & balances
+    await prisma.binStockBalance.deleteMany({
+      where: {
+        tenantId,
+        batch: {
+          batchNumber: { startsWith: 'BATCH-' },
+        },
+      },
+    });
+    await prisma.inventoryBatch.deleteMany({
+      where: {
+        tenantId,
+        batchNumber: { startsWith: 'BATCH-' },
+      },
+    });
+
+    // Reset customer balances
+    await prisma.customer.updateMany({
+      where: { tenantId },
+      data: {
+        loyaltyPointsBalance: new Decimal(150),
+        khataCurrentBalance: new Decimal(0),
+      },
+    });
+
+    // Reset bulk sack net landing cost & godown stock balance
+    const bulkRiceProd = await prisma.product.findUnique({
+      where: { tenantId_skuCode: { tenantId, skuCode: 'SKU-RICE-50KG' } },
+    });
+    if (bulkRiceProd) {
+      await prisma.inventoryBatch.updateMany({
+        where: { productId: bulkRiceProd.id, branchId },
+        data: {
+          netLandingCost: new Decimal(42.0),
+          purchaseRate: new Decimal(40.0),
+          mrp: new Decimal(52.0),
+          retailSellingPrice: new Decimal(49.0),
+        },
+      });
+      const godownBin = await prisma.storageBin.findFirst({
+        where: { branchId, binType: 'GODOWN' },
+      });
+      const bulkBatchRecord = await prisma.inventoryBatch.findFirst({
+        where: { productId: bulkRiceProd.id, branchId },
+      });
+      if (godownBin && bulkBatchRecord) {
+        await prisma.binStockBalance.upsert({
+          where: {
+            branchId_binId_batchId: {
+              branchId,
+              binId: godownBin.id,
+              batchId: bulkBatchRecord.id,
+            },
+          },
+          update: { quantity: new Decimal(500) },
+          create: {
+            tenantId,
+            branchId,
+            binId: godownBin.id,
+            productId: bulkRiceProd.id,
+            batchId: bulkBatchRecord.id,
+            quantity: new Decimal(500),
+          },
+        });
+      }
+    }
+
     // -------------------------------------------------------------------------
     // STEP 1: StoreConfig & Onboarding
     // -------------------------------------------------------------------------
@@ -179,7 +268,7 @@ async function runSupermarketSmokeTest() {
     console.log(`       - Batch: ${grnBatchNum} active in inventory`);
 
     // -------------------------------------------------------------------------
-    // STEP 4: Bulk-to-Retail Repacking
+    // STEP 4: Bulk-to-Retail Repacking (REMOD-801A Cost Normalization)
     // -------------------------------------------------------------------------
     console.log('\n--- Step 4: Bulk-to-Retail Repacking ---');
     const bulkRice = await prisma.product.findUnique({
@@ -217,11 +306,21 @@ async function runSupermarketSmokeTest() {
     });
 
     assert(repackRes.labelsToPrint === 49, 'Repack must produce 49 label stickers');
-    assert(repackRes.calculatedUnitCost > 0, 'Calculated unit cost must be positive');
+    assert(
+      repackRes.calculatedUnitCost >= 40.0 && repackRes.calculatedUnitCost <= 50.0,
+      `Calculated unit cost (₹${repackRes.calculatedUnitCost}) must be normalized around ₹45.38 (got ₹${repackRes.calculatedUnitCost})`,
+    );
+    assert(
+      repackRes.calculatedUnitCost < 58.0,
+      `Unit landing cost (₹${repackRes.calculatedUnitCost}) must be strictly less than retail selling price (₹58.00)`,
+    );
+    assert(repackRes.costExceedsSellingPriceWarning === false, 'Cost exceeds selling price warning must be false');
+
     console.log(`[PASS] Step 4: Bulk-to-Retail Repacking verified.`);
     console.log(`       - Consumed: 50 kg bulk rice sack -> Produced: 49x 1 kg retail pouches + 0.5 kg wastage`);
     console.log(`       - Packaging & Overhead apportioned: ₹123.50`);
     console.log(`       - Unit Landing Cost: ₹${repackRes.calculatedUnitCost.toFixed(2)}/pouch (MRP: ₹65, RSP: ₹58)`);
+    console.log(`       - Healthy Margin: +₹${(58.0 - repackRes.calculatedUnitCost).toFixed(2)}/pouch (+${(((58.0 - repackRes.calculatedUnitCost) / 58.0) * 100).toFixed(2)}%)`);
     console.log(`       - Generated 49x 2-Up ZPL Label stickers for barcode batch ${retailBatchNum}`);
 
     // -------------------------------------------------------------------------
@@ -235,12 +334,6 @@ async function runSupermarketSmokeTest() {
       where: { tenantId, username: 'cashier1' },
     });
     if (!terminal || !cashier) throw new Error('Terminal POS-01 or Cashier cashier1 not found');
-
-    // Close any previous open shift on this terminal to ensure clean slate
-    await prisma.cashierShift.updateMany({
-      where: { terminalId: terminal.id, status: ShiftStatusEnum.OPEN },
-      data: { status: ShiftStatusEnum.CLOSED, endTime: new Date() },
-    });
 
     const shift = await posShiftService.openShift({
       tenantId,
@@ -554,7 +647,7 @@ async function runSupermarketSmokeTest() {
     console.log(`       - Tally Prime: Exported ${tallyExport.voucherCount} vouchers as official Tally XML (<ENVELOPE>)`);
 
     // -------------------------------------------------------------------------
-    // STEP 12: HR Payroll, AI Copilot & Nightly Closing Report
+    // STEP 12: HR Payroll, AI Copilot & Nightly Closing Report (REMOD-801B)
     // -------------------------------------------------------------------------
     console.log('\n--- Step 12: HR Payroll, AI Copilot & Nightly Closing Report ---');
     // 1. Monthly Payroll with Cashier Shortage Deduction
@@ -581,14 +674,17 @@ async function runSupermarketSmokeTest() {
       `Transliteration of "Toor Dal" must contain Tamil "துவரம் பருப்பு" (got ${transliteration.regionalTransliteratedName})`,
     );
 
-    // 3. 10:30 PM Nightly Closing WhatsApp Report
+    // 3. 10:30 PM Nightly Closing WhatsApp Report (Positive Gross Profit Verification)
     const nightly = await ownerAnalyticsService.generateNightlyClosingReport(tenantId, branchId);
     assert(nightly.whatsappFormattedMessage.includes('10:30 PM CLOSING REPORT'), 'Closing report must have title header');
-    assert(nightly.summary.billCount > 0, 'Closing report must reflect sales billed today');
+    assert(nightly.summary.billCount === 1, `Closing report must reflect exactly 1 bill today (got ${nightly.summary.billCount})`);
+    assert(nightly.summary.grossProfit > 0, `Gross Profit (₹${nightly.summary.grossProfit}) must be strictly positive!`);
+    assert(nightly.summary.grossProfitPct > 10.0, `Gross Profit Margin (${nightly.summary.grossProfitPct}%) must exceed 10%!`);
 
     console.log(`[PASS] Step 12: HR Payroll, AI Copilot & Nightly Closing Report verified.`);
     console.log(`       - Monthly Payroll (${currentMonthYear}): Cashier ${cashier.fullName} Base ₹${Number(cashierPayroll!.earnings.baseSalary).toFixed(2)} - Deductions ₹${shortageDeduction.toFixed(2)} (including ₹100 cashier shortage) = Net Pay ₹${Number(cashierPayroll!.netPaidSalary).toFixed(2)}`);
     console.log(`       - AI Bilingual Lexicon: "Toor Dal 1kg" -> "${transliteration.regionalTransliteratedName}" (Tamil)`);
+    console.log(`       - Gross Profit Verified: Strictly Positive ₹${nightly.summary.grossProfit.toFixed(2)} (${nightly.summary.grossProfitPct.toFixed(1)}% Gross Margin)`);
     console.log(`       - 10:30 PM WhatsApp Closing Report Generated:\n`);
     console.log(nightly.whatsappFormattedMessage);
 

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   UnauthorizedException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantBranchService } from '../core/tenant-branch.service';
@@ -22,6 +23,8 @@ import { Decimal } from '@ti-erp/database';
 
 @Injectable()
 export class InventoryBatchService {
+  private readonly logger = new Logger(InventoryBatchService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantBranchService: TenantBranchService,
@@ -371,7 +374,15 @@ export class InventoryBatchService {
       const laborCost = dto.laborAndOverheadCost ? new Decimal(dto.laborAndOverheadCost) : new Decimal(0);
       const totalRepackCost = bulkMaterialCost.add(pkgCost).add(laborCost);
       const retailPacksProduced = new Decimal(dto.retailPacksProduced);
-      const unitLandingCost = totalRepackCost.div(retailPacksProduced);
+      const unitLandingCost = totalRepackCost.div(retailPacksProduced).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+
+      // Repacking Cost Guardrail: Alert if unit cost exceeds selling price
+      const costExceedsSellingPriceWarning = unitLandingCost.greaterThan(new Decimal(dto.sellingPricePerPack));
+      if (costExceedsSellingPriceWarning) {
+        this.logger.warn(
+          `[Repacking Guardrail Warning] Calculated unit landing cost (₹${unitLandingCost.toFixed(2)}) exceeds retail selling price (₹${Number(dto.sellingPricePerPack).toFixed(2)}) for child product ${dto.retailChildProductId}. Possible UOM or bulk quantity mismatch!`,
+        );
+      }
 
       // 4. Create Retail Child SKU Batch
       const retailBatch = await tx.inventoryBatch.create({
@@ -461,6 +472,7 @@ export class InventoryBatchService {
         retailBatch,
         calculatedUnitCost: Number(unitLandingCost),
         labelsToPrint: Number(retailPacksProduced),
+        costExceedsSellingPriceWarning,
       };
     });
   }

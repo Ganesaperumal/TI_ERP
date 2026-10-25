@@ -599,17 +599,22 @@ async function main() {
         batchNumber: 'B-RICE-SACK-01',
       },
     },
-    update: {},
+    update: {
+      mrp: new Prisma.Decimal(52.0),
+      purchaseRate: new Prisma.Decimal(40.0),
+      netLandingCost: new Prisma.Decimal(42.0), // ₹42.00/kg (50kg sack = ₹2,100.00)
+      retailSellingPrice: new Prisma.Decimal(49.0),
+    },
     create: {
       tenantId: tenant.id,
       branchId: mainBranch.id,
       productId: pBulkSack.id,
       batchNumber: 'B-RICE-SACK-01',
       expiryDate: new Date('2027-10-01'),
-      mrp: new Prisma.Decimal(2600.0),
-      purchaseRate: new Prisma.Decimal(2000.0),
-      netLandingCost: new Prisma.Decimal(2100.0),
-      retailSellingPrice: new Prisma.Decimal(2450.0),
+      mrp: new Prisma.Decimal(52.0),
+      purchaseRate: new Prisma.Decimal(40.0),
+      netLandingCost: new Prisma.Decimal(42.0), // ₹42.00/kg (50kg sack = ₹2,100.00)
+      retailSellingPrice: new Prisma.Decimal(49.0),
     },
   });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoreConfigPage } from './features/settings/StoreConfigPage';
 import { ProductMasterPage } from './features/inventory/ProductMasterPage';
 import { RepackingStudioPage } from './features/inventory/RepackingStudioPage';
@@ -14,6 +14,7 @@ import { DeliveryAndQueueBusterPage } from './features/fulfillment/DeliveryAndQu
 import { FinanceGstAndTallyPage } from './features/accounting/FinanceGstAndTallyPage';
 import { HrAttendanceAndPayrollPage } from './features/hr/HrAttendanceAndPayrollPage';
 import { AiCopilotAndSyncPage } from './features/ai-sync/AiCopilotAndSyncPage';
+import { posApiClient } from './lib/api-client';
 
 type AppTab =
   | 'POS'
@@ -34,6 +35,13 @@ type AppTab =
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>('POS');
+  const [backendConnected, setBackendConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    posApiClient.checkHealth().then((res) => {
+      setBackendConnected(res.connected);
+    });
+  }, []);
 
   const tabs: Array<{ id: AppTab; label: string }> = [
     { id: 'POS', label: '🛒 Cashier POS (F1-F12)' },
@@ -76,6 +84,29 @@ export const App: React.FC = () => {
               Terminal: POS-01 | Branch: Flagship Hypermarket (Model B LAN)
             </div>
           </div>
+          <span
+            style={{
+              padding: '4px 10px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              backgroundColor: backendConnected ? '#064e3b' : '#78350f',
+              color: backendConnected ? '#34d399' : '#fbbf24',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: backendConnected ? '#10b981' : '#f59e0b',
+              }}
+            />
+            {backendConnected ? '🟢 API Online (Port 3000)' : '🟡 Offline Demo Mode (Mock Active)'}
+          </span>
         </div>
 
         <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>

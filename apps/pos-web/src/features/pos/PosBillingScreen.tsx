@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_STORE_CONFIG } from '@ti-erp/shared-types';
+import { hardwareBridgeClient } from '../../lib/hardware-bridge-client';
 
 export interface PosCartItem {
   id: string;
@@ -165,20 +166,20 @@ export const PosBillingScreen: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [netPayable]);
 
-  const handleSimulateScale = () => {
-    const randomWeight = parseFloat((Math.random() * (2.5 - 0.5) + 0.5).toFixed(3));
+  const handleSimulateScale = async () => {
+    const reading = await hardwareBridgeClient.readScaleWeight(0.75);
     const item = FAST_MOVING_ITEMS[0]; // Potato
-    const cost = parseFloat((item.price * randomWeight).toFixed(2));
+    const cost = parseFloat((item.price * reading.weightKg).toFixed(2));
     const newItem: PosCartItem = {
       id: Date.now().toString(),
       productId: item.id,
       skuCode: `PLU-${item.plu}`,
-      nameEn: `${item.nameEn} (${randomWeight} kg)`,
+      nameEn: `${item.nameEn} (${reading.weightKg.toFixed(3)} kg)`,
       nameRegional: item.nameRegional,
       batchNumber: 'SCALE-WT',
-      mrp: parseFloat((item.mrp * randomWeight).toFixed(2)),
+      mrp: parseFloat((item.mrp * reading.weightKg).toFixed(2)),
       sellingPrice: item.price,
-      quantity: randomWeight,
+      quantity: reading.weightKg,
       uom: 'KG',
       discount: 0,
       lineTotal: cost,
@@ -262,19 +263,45 @@ export const PosBillingScreen: React.FC = () => {
     );
   };
 
-  const handleInstantCashCheckout = () => {
+  const handleInstantCashCheckout = async () => {
     const billNo = `INV-T01-${Date.now().toString().slice(-6)}`;
-    setReceiptSuccessModal(
-      `Receipt #${billNo} Completed via CASH! Total Paid: ₹${netPayable.toFixed(2)}. Cash drawer pulsed open. ESC/POS 80mm thermal receipt sent to printer.`,
-    );
+    const printRes = await hardwareBridgeClient.printReceipt({
+      billNumber: billNo,
+      netPayable,
+      items: cart.map((c) => ({
+        name: c.nameEn,
+        qty: c.quantity,
+        rate: c.sellingPrice,
+        amount: c.lineTotal,
+      })),
+      payments: [{ method: 'CASH', amount: netPayable }],
+    });
+    await hardwareBridgeClient.kickCashDrawer();
+    setReceiptSuccessModal(printRes.preview);
     setCart([]);
   };
 
-  const handleCompleteSplitPayment = () => {
+  const handleCompleteSplitPayment = async () => {
     const billNo = `INV-T01-${Date.now().toString().slice(-6)}`;
-    setReceiptSuccessModal(
-      `Receipt #${billNo} Completed via Multi-Tender Split! (Cash: ₹${cashTendered}, UPI: ₹${upiTendered}, Card: ₹${cardTendered}, CreditNote: ₹${creditNoteAmount}). Cash drawer pulsed. Thermal receipt printed.`,
-    );
+    const printRes = await hardwareBridgeClient.printReceipt({
+      billNumber: billNo,
+      netPayable,
+      items: cart.map((c) => ({
+        name: c.nameEn,
+        qty: c.quantity,
+        rate: c.sellingPrice,
+        amount: c.lineTotal,
+      })),
+      payments: [
+        { method: 'CASH', amount: cashTendered },
+        { method: 'UPI', amount: upiTendered },
+        { method: 'CARD', amount: cardTendered },
+        { method: 'KHATA', amount: khataTendered },
+        { method: 'CREDIT_NOTE', amount: creditNoteAmount },
+      ].filter((p) => p.amount > 0),
+    });
+    await hardwareBridgeClient.kickCashDrawer();
+    setReceiptSuccessModal(printRes.preview);
     setSplitModalOpen(false);
     setCart([]);
   };
@@ -1091,13 +1118,38 @@ export const PosBillingScreen: React.FC = () => {
 
       {/* SUCCESS RECEIPT BANNER */}
       {receiptSuccessModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: '#064e3b', padding: '28px', borderRadius: '12px', maxWidth: '550px', width: '100%', border: '2px solid #10b981', textAlign: 'center' }}>
-            <div style={{ fontSize: '40px', marginBottom: '12px' }}>✅</div>
-            <h3 style={{ margin: '0 0 10px', color: '#a7f3d0', fontSize: '20px' }}>Checkout Completed!</h3>
-            <p style={{ fontSize: '13px', color: '#d1fae5', margin: '0 0 20px', lineHeight: '1.6' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '24px', borderRadius: '12px', maxWidth: '480px', width: '100%', border: '2px solid #10b981', textAlign: 'center', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '24px' }}>✅</span>
+                <h3 style={{ margin: 0, color: '#a7f3d0', fontSize: '18px' }}>Checkout Completed & Printed</h3>
+              </div>
+              <span style={{ fontSize: '11px', backgroundColor: '#064e3b', color: '#34d399', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                80mm ESC/POS
+              </span>
+            </div>
+
+            <pre
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                backgroundColor: '#020617',
+                padding: '14px',
+                borderRadius: '8px',
+                border: '1px solid #1e293b',
+                color: '#e2e8f0',
+                fontSize: '11px',
+                lineHeight: '1.4',
+                fontFamily: 'monospace',
+                textAlign: 'left',
+                whiteSpace: 'pre-wrap',
+                margin: '0 0 16px',
+              }}
+            >
               {receiptSuccessModal}
-            </p>
+            </pre>
+
             <button
               onClick={() => {
                 setReceiptSuccessModal(null);

@@ -9,12 +9,61 @@ import {
   BatchTrackingModeEnum,
   NegativeStockRuleEnum,
   ComboModeEnum,
+  PromotionTypeEnum,
+  LoyaltyTierEnum,
+  Prisma,
 } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const STANDARD_CHART_OF_ACCOUNTS = [
+  // Assets
+  { code: 'ASSET_CASH_DRAWER', name: 'Cash-in-Hand (Counter Drawers)', groupType: AccountTypeEnum.ASSET, groupName: 'Current Assets' },
+  { code: 'ASSET_SAFE_CASH', name: 'Main Safe Cash', groupType: AccountTypeEnum.ASSET, groupName: 'Current Assets' },
+  { code: 'ASSET_BANK_MAIN', name: 'Bank Accounts (HDFC / SBI / ICICI)', groupType: AccountTypeEnum.ASSET, groupName: 'Bank Accounts' },
+  { code: 'ASSET_UPI_CARD_CLEARING', name: 'UPI/Card Pending Settlement Clearing', groupType: AccountTypeEnum.ASSET, groupName: 'Current Assets' },
+  { code: 'ASSET_INVENTORY_STOCK', name: 'Inventory Asset (Closing Stock)', groupType: AccountTypeEnum.ASSET, groupName: 'Inventory Stock' },
+  { code: 'ASSET_ACCOUNTS_RECEIVABLE', name: 'Accounts Receivable (Customer Khata)', groupType: AccountTypeEnum.ASSET, groupName: 'Sundry Debtors' },
+  { code: 'ASSET_GST_INPUT_CGST', name: 'GST Input Tax Credit - CGST', groupType: AccountTypeEnum.ASSET, groupName: 'Duties and Taxes' },
+  { code: 'ASSET_GST_INPUT_SGST', name: 'GST Input Tax Credit - SGST', groupType: AccountTypeEnum.ASSET, groupName: 'Duties and Taxes' },
+  { code: 'ASSET_GST_INPUT_IGST', name: 'GST Input Tax Credit - IGST', groupType: AccountTypeEnum.ASSET, groupName: 'Duties and Taxes' },
+  { code: 'ASSET_GST_INPUT_CESS', name: 'GST Input Tax Credit - Cess', groupType: AccountTypeEnum.ASSET, groupName: 'Duties and Taxes' },
+  { code: 'ASSET_STAFF_ADVANCES', name: 'Staff Salary Advances', groupType: AccountTypeEnum.ASSET, groupName: 'Loans and Advances' },
+
+  // Liabilities
+  { code: 'LIAB_ACCOUNTS_PAYABLE', name: 'Accounts Payable (Sundry Creditors / Suppliers)', groupType: AccountTypeEnum.LIABILITY, groupName: 'Sundry Creditors' },
+  { code: 'LIAB_GST_OUTPUT_CGST', name: 'GST Output Tax Liability - CGST', groupType: AccountTypeEnum.LIABILITY, groupName: 'Duties and Taxes' },
+  { code: 'LIAB_GST_OUTPUT_SGST', name: 'GST Output Tax Liability - SGST', groupType: AccountTypeEnum.LIABILITY, groupName: 'Duties and Taxes' },
+  { code: 'LIAB_GST_OUTPUT_IGST', name: 'GST Output Tax Liability - IGST', groupType: AccountTypeEnum.LIABILITY, groupName: 'Duties and Taxes' },
+  { code: 'LIAB_GST_OUTPUT_CESS', name: 'GST Output Tax Liability - Cess', groupType: AccountTypeEnum.LIABILITY, groupName: 'Duties and Taxes' },
+  { code: 'LIAB_PREPAID_GIFT_CARDS', name: 'Customer Prepaid Gift Cards', groupType: AccountTypeEnum.LIABILITY, groupName: 'Current Liabilities' },
+  { code: 'LIAB_CREDIT_NOTES', name: 'Customer Credit Note Liability', groupType: AccountTypeEnum.LIABILITY, groupName: 'Current Liabilities' },
+  { code: 'LIAB_SALARY_PAYABLE', name: 'Staff Salaries Payable', groupType: AccountTypeEnum.LIABILITY, groupName: 'Current Liabilities' },
+
+  // Income
+  { code: 'INC_RETAIL_SALES', name: 'Retail POS Sales', groupType: AccountTypeEnum.INCOME, groupName: 'Sales Accounts' },
+  { code: 'INC_WHOLESALE_SALES', name: 'Wholesale B2B Sales', groupType: AccountTypeEnum.INCOME, groupName: 'Sales Accounts' },
+  { code: 'INC_OTHER_STORE_INCOME', name: 'Other Store Income (Brand Display & End-Cap Rentals)', groupType: AccountTypeEnum.INCOME, groupName: 'Direct Income' },
+  { code: 'INC_ROUNDOFF', name: 'Round-Off Gain', groupType: AccountTypeEnum.INCOME, groupName: 'Direct Income' },
+
+  // Expenses
+  { code: 'EXP_COGS', name: 'Cost of Goods Sold (COGS)', groupType: AccountTypeEnum.EXPENSE, groupName: 'Direct Expenses' },
+  { code: 'EXP_SHRINKAGE_WRITE_OFF', name: 'Inventory Shrinkage/Wastage/Damage Write-Off', groupType: AccountTypeEnum.EXPENSE, groupName: 'Direct Expenses' },
+  { code: 'EXP_BANK_MDR_CHARGES', name: 'Bank MDR & Payment Gateway Charges', groupType: AccountTypeEnum.EXPENSE, groupName: 'Indirect Expenses' },
+  { code: 'EXP_STORE_RENT', name: 'Store Rent', groupType: AccountTypeEnum.EXPENSE, groupName: 'Indirect Expenses' },
+  { code: 'EXP_ELECTRICITY_BILL', name: 'Electricity & EB Bill', groupType: AccountTypeEnum.EXPENSE, groupName: 'Indirect Expenses' },
+  { code: 'EXP_PACKAGING_MATERIALS', name: 'Packaging Materials & Carry Bags', groupType: AccountTypeEnum.EXPENSE, groupName: 'Direct Expenses' },
+  { code: 'EXP_STAFF_SALARIES', name: 'Staff Salaries & Incentives', groupType: AccountTypeEnum.EXPENSE, groupName: 'Indirect Expenses' },
+  { code: 'EXP_FREIGHT_DELIVERY_FUEL', name: 'Freight Inward & Delivery Fuel', groupType: AccountTypeEnum.EXPENSE, groupName: 'Direct Expenses' },
+  { code: 'EXP_ROUNDOFF', name: 'Round-Off Expense', groupType: AccountTypeEnum.EXPENSE, groupName: 'Indirect Expenses' },
+
+  // Equity
+  { code: 'EQ_OPENING_CAPITAL', name: 'Store Owner Opening Capital', groupType: AccountTypeEnum.EQUITY, groupName: 'Capital Account' },
+  { code: 'EQ_RETAINED_EARNINGS', name: 'Retained Earnings', groupType: AccountTypeEnum.EQUITY, groupName: 'Reserves and Surplus' },
+];
+
 async function main() {
-  console.log('Seeding enterprise master data for TI-ERP (Milestone 2)...');
+  console.log('Seeding enterprise master data for TI-ERP (Milestone 8 V1.0)...');
 
   // 1. SaaS License
   const license = await prisma.saaSLicense.upsert({
@@ -33,29 +82,33 @@ async function main() {
         loyalty: true,
         hardwareBridge: true,
         aiOcr: true,
+        multiBranch: true,
       },
       amcExpiryDate: new Date('2028-12-31'),
       isActive: true,
     },
   });
 
-  // 2. Master Tenant
+  // 2. Master Tenant: TI Supermarket Enterprise
   const tenant = await prisma.tenant.upsert({
     where: { code: 'TI_CORP' },
-    update: {},
+    update: {
+      name: 'TI Supermarket Enterprise',
+      topology: TopologyModeEnum.MULTI_BRANCH,
+    },
     create: {
       licenseId: license.id,
       code: 'TI_CORP',
-      name: 'TI Supermarkets India Pvt Ltd',
+      name: 'TI Supermarket Enterprise',
       legalTradeName: 'TI Supermarkets India Private Limited',
       primaryContact: '+91 9876543210',
       email: 'admin@tierp.local',
       gstRegime: GstRegimeEnum.REGULAR,
-      topology: TopologyModeEnum.SINGLE_STORE,
+      topology: TopologyModeEnum.MULTI_BRANCH,
     },
   });
 
-  // 3. Branches: Main Retail Store + Central Warehouse
+  // 3. Branches: Main Supermarket (Tirupur) & Central Warehouse (HO)
   const mainBranch = await prisma.branch.upsert({
     where: {
       tenantId_code: {
@@ -63,18 +116,21 @@ async function main() {
         code: 'BR_MAIN',
       },
     },
-    update: {},
+    update: {
+      name: 'Main Supermarket (Tirupur)',
+      city: 'Tirupur',
+    },
     create: {
       tenantId: tenant.id,
       code: 'BR_MAIN',
-      name: 'TI Supermarket Flagship Store',
+      name: 'Main Supermarket (Tirupur)',
       branchType: BranchTypeEnum.RETAIL_STORE,
       gstin: '33AAAAA0000A1Z5',
-      address: '100 Feet Road, Indiranagar',
-      city: 'Coimbatore',
+      address: '100 Feet Road, Avinashi Road',
+      city: 'Tirupur',
       stateCode: '33',
-      pincode: '641001',
-      phone: '+91 422 2345678',
+      pincode: '641602',
+      phone: '+91 421 2345678',
       regionalLanguage: 'ta-IN',
       localServerIp: '192.168.1.100',
     },
@@ -87,51 +143,58 @@ async function main() {
         code: 'BR_WH',
       },
     },
-    update: {},
+    update: {
+      name: 'Central Warehouse (HO)',
+      city: 'Tirupur',
+    },
     create: {
       tenantId: tenant.id,
       code: 'BR_WH',
-      name: 'TI Central Distribution Warehouse',
+      name: 'Central Warehouse (HO)',
       branchType: BranchTypeEnum.WAREHOUSE,
       gstin: '33AAAAA0000A1Z5',
       address: 'Plot 45, SIPCOT Industrial Park',
-      city: 'Perundurai',
+      city: 'Tirupur',
       stateCode: '33',
-      pincode: '638052',
-      phone: '+91 424 9876543',
+      pincode: '641603',
+      phone: '+91 421 9876543',
       regionalLanguage: 'ta-IN',
       localServerIp: '192.168.1.200',
     },
   });
 
-  // 4. Physical Storage Bins per branch
+  // 4. Physical Storage Bins per branch (including CONSIGNMENT)
   const binDefs = [
     { code: 'BIN_GODOWN', name: 'Backroom Central Godown', type: StorageBinTypeEnum.GODOWN, aisle: 'A1', rack: 'R01' },
     { code: 'BIN_SHOP_FLOOR', name: 'Main Retail Floor Gondolas', type: StorageBinTypeEnum.SHOP_FLOOR, aisle: 'F1', rack: 'R01' },
     { code: 'BIN_DAMAGED_RET', name: 'Damaged Goods (Vendor Return)', type: StorageBinTypeEnum.DAMAGED_RETURNABLE, aisle: 'D1', rack: 'R99' },
     { code: 'BIN_SCRAP', name: 'Damaged Scrap Write-off', type: StorageBinTypeEnum.DAMAGED_SCRAP, aisle: 'D2', rack: 'R99' },
+    { code: 'BIN_CONSIGNMENT', name: 'Consignment Vendor Display', type: StorageBinTypeEnum.CONSIGNMENT, aisle: 'C1', rack: 'R10' },
   ];
 
+  const binMap: Record<string, string> = {};
   for (const branch of [mainBranch, warehouseBranch]) {
     for (const b of binDefs) {
-      await prisma.storageBin.upsert({
+      const binCode = `${branch.code}_${b.code}`;
+      const bin = await prisma.storageBin.upsert({
         where: {
           branchId_binCode: {
             branchId: branch.id,
-            binCode: `${branch.code}_${b.code}`,
+            binCode,
           },
         },
         update: {},
         create: {
           tenantId: tenant.id,
           branchId: branch.id,
-          binCode: `${branch.code}_${b.code}`,
+          binCode,
           binType: b.type,
           aisle: b.aisle,
           rack: b.rack,
           description: `${branch.name} - ${b.name}`,
         },
       });
+      binMap[binCode] = bin.id;
     }
   }
 
@@ -189,7 +252,7 @@ async function main() {
     },
   });
 
-  await prisma.user.upsert({
+  const cashierUser = await prisma.user.upsert({
     where: {
       tenantId_username: {
         tenantId: tenant.id,
@@ -204,7 +267,8 @@ async function main() {
       username: 'cashier1',
       passwordHash: 'argon2_mock_hash_cashier',
       fullName: 'Lead Cashier 1',
-      salesmanCommissionRate: 0.5,
+      baseSalary: new Prisma.Decimal(18000),
+      salesmanCommissionRate: new Prisma.Decimal(0.5),
     },
   });
 
@@ -294,7 +358,7 @@ async function main() {
   });
 
   // 10. Sample Products Across ALL 5 Product Types
-  // Type 1: STANDARD_FMCG with Multi-Barcode Aliases
+  // Type 1: STANDARD_FMCG with Multi-Barcode Aliases & Multi-UOM Carton
   const pFmcg = await prisma.product.upsert({
     where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-FMCG-001' } },
     update: {},
@@ -316,28 +380,46 @@ async function main() {
     },
   });
 
-  // Barcode aliases (Factory EAN + Internal Store Barcode)
+  // Barcode aliases
   await prisma.productBarcode.upsert({
     where: { tenantId_barcode: { tenantId: tenant.id, barcode: '8901719114138' } },
     update: {},
     create: { tenantId: tenant.id, productId: pFmcg.id, barcode: '8901719114138', isPrimary: true },
   });
+
   await prisma.productBarcode.upsert({
     where: { tenantId_barcode: { tenantId: tenant.id, barcode: 'PARLEG1KG' } },
     update: {},
     create: { tenantId: tenant.id, productId: pFmcg.id, barcode: 'PARLEG1KG', isPrimary: false },
   });
 
-  // Type 2: WEIGHED_LOOSE (Produce with 3-digit PLU & Scale prefix support)
+  // Multi-UOM Carton Conversion (1 CARTON = 24 PACKs)
+  await prisma.productUomConversion.upsert({
+    where: { productId_uomName: { productId: pFmcg.id, uomName: 'CARTON' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      productId: pFmcg.id,
+      uomName: 'CARTON',
+      conversionFactor: new Prisma.Decimal(24),
+      barcode: '8901719114138-CTN',
+      retailPrice: new Prisma.Decimal(2600.0),
+      wholesalePrice: new Prisma.Decimal(2400.0),
+    },
+  });
+
+  // Type 2: WEIGHED_LOOSE (Produce with PLU '10001' / '201' for scale prefix barcode 2010001007505)
   const pLoose = await prisma.product.upsert({
     where: { tenantId_skuCode: { tenantId: tenant.id, skuCode: 'SKU-PROD-002' } },
-    update: {},
+    update: {
+      shortPluCode: '10001',
+    },
     create: {
       tenantId: tenant.id,
       skuCode: 'SKU-PROD-002',
       nameEn: 'Farm Fresh Potato',
       nameRegional: 'உருளைக்கிழங்கு',
-      shortPluCode: '201',
+      shortPluCode: '10001',
       categoryId: catGrocery.id,
       hsnId: hsnMap['0000'],
       productType: ProductTypeEnum.WEIGHED_LOOSE,
@@ -347,7 +429,6 @@ async function main() {
     },
   });
 
-  // Barcode alias for PLU 201
   await prisma.productBarcode.upsert({
     where: { tenantId_barcode: { tenantId: tenant.id, barcode: '2000201' } },
     update: {},
@@ -410,17 +491,21 @@ async function main() {
     },
   });
 
-  await prisma.comboBomItem.deleteMany({ where: { parentComboProductId: pCombo.id } });
-  await prisma.comboBomItem.create({
-    data: {
-      tenantId: tenant.id,
-      parentComboProductId: pCombo.id,
-      childProductId: pFmcg.id,
-      comboMode: ComboModeEnum.PRE_PACKED,
-      quantityRequired: 2,
-      priceApportionmentPct: 50,
-    },
+  const existingBom = await prisma.comboBomItem.findFirst({
+    where: { parentComboProductId: pCombo.id, childProductId: pFmcg.id },
   });
+  if (!existingBom) {
+    await prisma.comboBomItem.create({
+      data: {
+        tenantId: tenant.id,
+        parentComboProductId: pCombo.id,
+        childProductId: pFmcg.id,
+        comboMode: ComboModeEnum.PRE_PACKED,
+        quantityRequired: 2,
+        priceApportionmentPct: 50,
+      },
+    });
+  }
 
   // Type 5: VARIANT_MATRIX (Apparel Polo T-Shirt with Size and Color matrix)
   const pMatrix = await prisma.product.upsert({
@@ -460,7 +545,7 @@ async function main() {
   }
 
   // 11. Initial Batches in Main Branch
-  await prisma.inventoryBatch.upsert({
+  const batchFmcg = await prisma.inventoryBatch.upsert({
     where: {
       branchId_productId_batchNumber: {
         branchId: mainBranch.id,
@@ -475,16 +560,16 @@ async function main() {
       productId: pFmcg.id,
       batchNumber: 'B-PARLE-OCT26',
       expiryDate: new Date('2027-04-30'),
-      mrp: 120.0,
-      purchaseRate: 90.0,
-      netLandingCost: 95.0,
-      retailSellingPrice: 110.0,
-      wholesalePriceTier1: 102.0,
-      wholesalePriceTier2: 98.0,
+      mrp: new Prisma.Decimal(120.0),
+      purchaseRate: new Prisma.Decimal(90.0),
+      netLandingCost: new Prisma.Decimal(95.0),
+      retailSellingPrice: new Prisma.Decimal(110.0),
+      wholesalePriceTier1: new Prisma.Decimal(102.0),
+      wholesalePriceTier2: new Prisma.Decimal(98.0),
     },
   });
 
-  await prisma.inventoryBatch.upsert({
+  const batchLoose = await prisma.inventoryBatch.upsert({
     where: {
       branchId_productId_batchNumber: {
         branchId: mainBranch.id,
@@ -499,15 +584,14 @@ async function main() {
       productId: pLoose.id,
       batchNumber: 'B-POTATO-TODAY',
       expiryDate: new Date('2026-11-05'),
-      mrp: 40.0,
-      purchaseRate: 26.0,
-      netLandingCost: 28.0,
-      retailSellingPrice: 36.0,
+      mrp: new Prisma.Decimal(40.0),
+      purchaseRate: new Prisma.Decimal(26.0),
+      netLandingCost: new Prisma.Decimal(28.0),
+      retailSellingPrice: new Prisma.Decimal(36.0),
     },
   });
 
-  // Bulk Sack Batch
-  await prisma.inventoryBatch.upsert({
+  const batchBulkSack = await prisma.inventoryBatch.upsert({
     where: {
       branchId_productId_batchNumber: {
         branchId: mainBranch.id,
@@ -522,14 +606,229 @@ async function main() {
       productId: pBulkSack.id,
       batchNumber: 'B-RICE-SACK-01',
       expiryDate: new Date('2027-10-01'),
-      mrp: 2600.0,
-      purchaseRate: 2000.0,
-      netLandingCost: 2100.0,
-      retailSellingPrice: 2450.0,
+      mrp: new Prisma.Decimal(2600.0),
+      purchaseRate: new Prisma.Decimal(2000.0),
+      netLandingCost: new Prisma.Decimal(2100.0),
+      retailSellingPrice: new Prisma.Decimal(2450.0),
     },
   });
 
-  console.log('Master seed complete successfully across all 5 Product Types!');
+  // 12. Seed Bin Stock Balances for Immediate Testing
+  const shopFloorBinId = binMap[`${mainBranch.code}_BIN_SHOP_FLOOR`];
+  const godownBinId = binMap[`${mainBranch.code}_BIN_GODOWN`];
+
+  if (shopFloorBinId) {
+    await prisma.binStockBalance.upsert({
+      where: {
+        branchId_binId_batchId: {
+          branchId: mainBranch.id,
+          binId: shopFloorBinId,
+          batchId: batchFmcg.id,
+        },
+      },
+      update: { quantity: new Prisma.Decimal(100) },
+      create: {
+        tenantId: tenant.id,
+        branchId: mainBranch.id,
+        productId: pFmcg.id,
+        binId: shopFloorBinId,
+        batchId: batchFmcg.id,
+        quantity: new Prisma.Decimal(100),
+      },
+    });
+
+    await prisma.binStockBalance.upsert({
+      where: {
+        branchId_binId_batchId: {
+          branchId: mainBranch.id,
+          binId: shopFloorBinId,
+          batchId: batchLoose.id,
+        },
+      },
+      update: { quantity: new Prisma.Decimal(250) },
+      create: {
+        tenantId: tenant.id,
+        branchId: mainBranch.id,
+        productId: pLoose.id,
+        binId: shopFloorBinId,
+        batchId: batchLoose.id,
+        quantity: new Prisma.Decimal(250),
+      },
+    });
+  }
+
+  if (godownBinId) {
+    await prisma.binStockBalance.upsert({
+      where: {
+        branchId_binId_batchId: {
+          branchId: mainBranch.id,
+          binId: godownBinId,
+          batchId: batchBulkSack.id,
+        },
+      },
+      update: { quantity: new Prisma.Decimal(500) },
+      create: {
+        tenantId: tenant.id,
+        branchId: mainBranch.id,
+        productId: pBulkSack.id,
+        binId: godownBinId,
+        batchId: batchBulkSack.id,
+        quantity: new Prisma.Decimal(500),
+      },
+    });
+  }
+
+  // 13. Standard Indian Chart of Accounts (COA)
+  const uniqueGroups = Array.from(
+    new Map(
+      STANDARD_CHART_OF_ACCOUNTS.map((a) => [
+        `${a.groupName}_${a.groupType}`,
+        { groupName: a.groupName, groupType: a.groupType },
+      ]),
+    ).values(),
+  );
+
+  const groupMap = new Map<string, string>();
+  for (const g of uniqueGroups) {
+    const group = await prisma.accountGroup.upsert({
+      where: {
+        tenantId_groupName: {
+          tenantId: tenant.id,
+          groupName: g.groupName,
+        },
+      },
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        groupName: g.groupName,
+        groupType: g.groupType,
+      },
+    });
+    groupMap.set(g.groupName, group.id);
+  }
+
+  for (const acc of STANDARD_CHART_OF_ACCOUNTS) {
+    const groupId = groupMap.get(acc.groupName);
+    if (!groupId) continue;
+
+    await prisma.ledgerAccount.upsert({
+      where: {
+        tenantId_code: {
+          tenantId: tenant.id,
+          code: acc.code,
+        },
+      },
+      update: {
+        accountName: acc.name,
+      },
+      create: {
+        tenantId: tenant.id,
+        code: acc.code,
+        accountName: acc.name,
+        groupId,
+        openingBalance: new Prisma.Decimal(0),
+        currentBalance: new Prisma.Decimal(0),
+      },
+    });
+  }
+
+  // 14. Sample Suppliers
+  await prisma.supplier.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'SUPP_SOUTHERN' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      code: 'SUPP_SOUTHERN',
+      name: 'Southern FMCG Distributors',
+      legalTradeName: 'Southern FMCG Wholesale Pvt Ltd',
+      gstin: '33ABCDE1234F1Z5',
+      phone: '+91 98401 22334',
+      email: 'orders@southernfmcg.com',
+      paymentTermsDays: 30,
+      creditLimit: new Prisma.Decimal(500000),
+      outstandingBalance: new Prisma.Decimal(45000),
+    },
+  });
+
+  await prisma.supplier.upsert({
+    where: { tenantId_code: { tenantId: tenant.id, code: 'SUPP_MEENAKSHI' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      code: 'SUPP_MEENAKSHI',
+      name: 'Sri Meenakshi Traders',
+      legalTradeName: 'Sri Meenakshi Agro Traders',
+      gstin: '33XYZAB9876C1Z2',
+      phone: '+91 94432 55667',
+      paymentTermsDays: 15,
+      creditLimit: new Prisma.Decimal(200000),
+      outstandingBalance: new Prisma.Decimal(14280),
+    },
+  });
+
+  // 15. Sample Customers (Silver and Gold Tier)
+  await prisma.customer.upsert({
+    where: { tenantId_phone: { tenantId: tenant.id, phone: '9876543210' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      phone: '9876543210',
+      name: 'Senthil Kumar',
+      email: 'senthil@gmail.com',
+      loyaltyTier: LoyaltyTierEnum.SILVER,
+      loyaltyPointsBalance: new Prisma.Decimal(150),
+      khataCreditLimit: new Prisma.Decimal(10000),
+      khataCurrentBalance: new Prisma.Decimal(1250),
+      rationCycleDayStart: 1,
+    },
+  });
+
+  await prisma.customer.upsert({
+    where: { tenantId_phone: { tenantId: tenant.id, phone: '9841099887' } },
+    update: {},
+    create: {
+      tenantId: tenant.id,
+      phone: '9841099887',
+      name: 'Lakshmi Narayanan',
+      email: 'lakshmi@yahoo.com',
+      loyaltyTier: LoyaltyTierEnum.GOLD,
+      loyaltyPointsBalance: new Prisma.Decimal(850),
+      khataCreditLimit: new Prisma.Decimal(25000),
+      khataCurrentBalance: new Prisma.Decimal(0),
+      rationCycleDayStart: 5,
+    },
+  });
+
+  // 16. Active Promotion Rules
+  const existingPromo = await prisma.promotionRule.findFirst({
+    where: { tenantId: tenant.id, name: 'Weekend Super Saver — Flat ₹100 Off on ₹1,000+' },
+  });
+
+  if (!existingPromo) {
+    const now = new Date();
+    const nextYear = new Date();
+    nextYear.setFullYear(now.getFullYear() + 1);
+
+    await prisma.promotionRule.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Weekend Super Saver — Flat ₹100 Off on ₹1,000+',
+        promoType: PromotionTypeEnum.CART_SLAB_UPSELL,
+        startDate: now,
+        endDate: nextYear,
+        priority: 10,
+        conditionConfig: {
+          minCartTotal: 1000,
+        },
+        rewardConfig: {
+          discountAmount: 100,
+        },
+        isActive: true,
+      },
+    });
+  }
+
+  console.log('✓ Master seed complete successfully across all 16 domains!');
 }
 
 main()

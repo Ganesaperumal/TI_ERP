@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { cloudApiClient } from '../lib/api-client';
 
 // Mock types for SaaS & Owner Dashboard
 interface SupermarketClient {
@@ -105,6 +106,21 @@ export default function CloudAdminHome() {
   const [showAiDrawer, setShowAiDrawer] = useState(false);
   const [showNightlyReportModal, setShowNightlyReportModal] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const checkConn = async () => {
+      const res = await cloudApiClient.checkHealth();
+      if (mounted) setIsBackendConnected(res.connected);
+    };
+    checkConn();
+    const interval = setInterval(checkConn, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Super-admin state
   const [clients, setClients] = useState<SupermarketClient[]>(INITIAL_CLIENTS);
@@ -318,44 +334,76 @@ export default function CloudAdminHome() {
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div style={{ display: 'flex', backgroundColor: '#1e293b', borderRadius: '8px', padding: '4px', gap: '4px' }}>
-          <button
-            onClick={() => setActiveTab('OWNER_MOBILE')}
+        {/* View Switcher Tabs & Connection Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div
             style={{
-              backgroundColor: activeTab === 'OWNER_MOBILE' ? '#2563eb' : 'transparent',
-              color: activeTab === 'OWNER_MOBILE' ? '#fff' : '#94a3b8',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '13px',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
+              backgroundColor: isBackendConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+              color: isBackendConnected ? '#4ade80' : '#fde047',
+              border: `1px solid ${isBackendConnected ? '#22c55e' : '#eab308'}`,
             }}
           >
-            <span>📱</span> Owner Live Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('SUPER_ADMIN')}
-            style={{
-              backgroundColor: activeTab === 'SUPER_ADMIN' ? '#2563eb' : 'transparent',
-              color: activeTab === 'SUPER_ADMIN' ? '#fff' : '#94a3b8',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span>🛡️</span> Super-Admin SaaS Licenses
-          </button>
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: isBackendConnected ? '#22c55e' : '#eab308',
+                display: 'inline-block',
+              }}
+            />
+            {isBackendConnected === null
+              ? 'Checking API...'
+              : isBackendConnected
+              ? 'Backend Connected (Live API)'
+              : 'Offline Demo Mode (Active)'}
+          </div>
+
+          <div style={{ display: 'flex', backgroundColor: '#1e293b', borderRadius: '8px', padding: '4px', gap: '4px' }}>
+            <button
+              onClick={() => setActiveTab('OWNER_MOBILE')}
+              style={{
+                backgroundColor: activeTab === 'OWNER_MOBILE' ? '#2563eb' : 'transparent',
+                color: activeTab === 'OWNER_MOBILE' ? '#fff' : '#94a3b8',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>📱</span> Owner Live Dashboard
+            </button>
+            <button
+              onClick={() => setActiveTab('SUPER_ADMIN')}
+              style={{
+                backgroundColor: activeTab === 'SUPER_ADMIN' ? '#2563eb' : 'transparent',
+                color: activeTab === 'SUPER_ADMIN' ? '#fff' : '#94a3b8',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>🛡️</span> Super-Admin SaaS Licenses
+            </button>
+          </div>
         </div>
       </header>
 

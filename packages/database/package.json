@@ -12,6 +12,9 @@
     "seed": "ts-node prisma/seed.ts",
     "clean": "rm -rf dist"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "^5.22.0"
   },

@@ -13,7 +13,9 @@
     "db:generate": "pnpm --filter @ti-erp/database prisma generate",
     "db:validate": "pnpm --filter @ti-erp/database prisma validate",
     "db:push": "pnpm --filter @ti-erp/database prisma db push",
-    "db:seed": "pnpm --filter @ti-erp/database run seed"
+    "db:seed": "pnpm --filter @ti-erp/database run seed",
+    "test:smoke": "pnpm --filter @ti-erp/api test:smoke",
+    "demo:verify": "node scripts/start-demo.js"
   },
   "devDependencies": {
     "turbo": "^2.4.4",

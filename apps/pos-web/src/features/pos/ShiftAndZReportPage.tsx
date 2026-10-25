@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { hardwareBridgeClient } from '../../lib/hardware-bridge-client';
 
 export const ShiftAndZReportPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'REGISTER' | 'BLIND_CLOSE' | 'Z_REPORT'>('BLIND_CLOSE');
@@ -21,6 +22,30 @@ export const ShiftAndZReportPage: React.FC = () => {
     '10': 15,  // 150
     coins: 45, // 45
   });
+
+  const handlePrintZReport = async () => {
+    if (!zReportData) return;
+    try {
+      const res = await hardwareBridgeClient.printReceipt({
+        billNumber: zReportData.zReportNumber,
+        cashierName: zReportData.cashierName,
+        date: zReportData.closedAt,
+        items: [
+          { name: 'GROSS SALES', qty: zReportData.totalBills, rate: zReportData.grossSales, amount: zReportData.grossSales },
+          { name: 'LESS DISCOUNTS', qty: 1, rate: zReportData.discounts, amount: -zReportData.discounts },
+        ],
+        netPayable: zReportData.netSales,
+        payments: zReportData.tenders,
+      });
+      if (res.hardwarePrinted) {
+        alert('✅ Z-Report sent to 80mm ESC/POS thermal printer.');
+      } else {
+        window.print();
+      }
+    } catch {
+      window.print();
+    }
+  };
 
   const multipliers: Record<string, number> = {
     '2000': 2000,
@@ -452,7 +477,7 @@ export const ShiftAndZReportPage: React.FC = () => {
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
             <button
-              onClick={() => window.print()}
+              onClick={handlePrintZReport}
               style={{ padding: '10px 22px', backgroundColor: '#38bdf8', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
             >
               🖨️ Print 80mm ESC/POS Z-Report

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { hardwareBridgeClient } from '../../lib/hardware-bridge-client';
 
 export const RepackingStudioPage: React.FC = () => {
   const [bulkQty, setBulkQty] = useState(50);
@@ -17,11 +18,21 @@ export const RepackingStudioPage: React.FC = () => {
   const grossMarginPerPack = retailSellingPrice - unitLandingCost;
   const grossMarginPct = retailSellingPrice > 0 ? (grossMarginPerPack / retailSellingPrice) * 100 : 0;
 
-  const handleExecuteRepack = () => {
+  const handleExecuteRepack = async () => {
+    const res = await hardwareBridgeClient.printZplLabels({
+      productNameEn: 'Sona Masoori Rice 1kg Retail Pouch',
+      productNameRegional: 'சோனா மசூரி அரிசி 1கிலோ',
+      barcode: '8901234567011',
+      netWeight: '1.000 kg',
+      mrp: retailMrp.toFixed(2),
+      sellingPrice: retailSellingPrice.toFixed(2),
+      packedDate: new Date().toLocaleDateString('en-IN'),
+    });
+
     setPrintSuccess(
-      `Repacking Job Completed! Converted ${bulkQty}kg into ${retailPacks} retail packs. Dispatched ZPL print job for ${retailPacks} barcode stickers!`,
+      `Repacking Job Completed! Converted ${bulkQty}kg into ${retailPacks} retail packs (Unit Cost: ₹${unitLandingCost.toFixed(2)}). Dispatched ZPL print job for ${retailPacks} 2-Up barcode stickers! ${res.hardwarePrinted ? '(Physical ZPL Printer Output Sent)' : '(Simulated ZPL Render Ready)'}`,
     );
-    setTimeout(() => setPrintSuccess(null), 5000);
+    setTimeout(() => setPrintSuccess(null), 8000);
   };
 
   return (

@@ -2,7 +2,7 @@
 **Current Phase:** Phase 4 — High-Speed POS Billing Engine, Promotions, Split Payments, Returns/Exchanges, Shift Blind Close Z-Report & Full Hardware Bridge
 **Active Milestone:** DISPATCH-004 (Milestone 4)
 **Status:** `COMPLETED & VERIFIED`
-**Last Verified Commit:** `b2d7739a53faa6f2089bf640297a7ae2654ab7ff`
+**Last Verified Commit:** `b496606bc2cdba2a014edb594face9f9f785144d`
 **Last Updated:** 2026-10-25T12:35:00+05:30
 
 ---
@@ -11,7 +11,7 @@
 - [x] **M1: Foundation & Database Architecture** (Monorepo, Docker LAN/Cloud Setup, Full Prisma Schema, Config Engine) — `COMPLETED (Commit: 11613591e87e1199a51c730eb92cdb75b9316955)`
 - [x] **M2: Core Masters & Inventory Engine** (Tenants, Branches, Bins, Multi-UOM, Products, Batches/MRP, Barcodes, Repacking, Combos) — `COMPLETED & VERIFIED`
 - [x] **M3: Procurement, Supplier & AI OCR Engine** (PO, Auto-Reorder, GRN Fast & 3-Way Match, Net Landing Cost, Debit Notes, Consignment, BYOK AI OCR) — `COMPLETED & VERIFIED (REMOD-301 Patched)`
-- [x] **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge** (Keyboard POS, LAN Hold/Recall, Split Pay, Schemes, EscPOS/Scale/ZPL Bridge) — `COMPLETED & VERIFIED`
+- [x] **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge** (Keyboard POS, LAN Hold/Recall, Split Pay, Schemes, EscPOS/Scale/ZPL Bridge) — `COMPLETED & VERIFIED (Commit: b496606bc2cdba2a014edb594face9f9f785144d)`
 - [ ] **M5: CRM, Loyalty, Khata & Home Delivery** (Points, OTP, Credit Ledger, Pick-Pack, Queue-Buster mPOS)
 - [ ] **M6: GST, Double-Entry Accounting & HR/Payroll** (Auto-Vouchers, GSTR-1/2B/3B, Tally XML, Attendance, Payroll)
 - [ ] **M7: Sync Engine, AI Copilot, Owner Mobile & SaaS License Portal** (LAN-to-Cloud Sync, BYOK AI, Super-Admin)

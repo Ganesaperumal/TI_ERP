@@ -398,5 +398,7 @@ $ turbo run build
 ## 6. GIT COMMIT & REMOTE PUSH CONFIRMATION
 - **Branch:** `main`
 - **Origin:** `https://github.com/Ganesaperumal/TI_ERP.git`
+- **Verified Commit SHA:** `b496606bc2cdba2a014edb594face9f9f785144d`
 - **Commit Message:** `feat: DISPATCH-004 milestone 4 - high-speed pos, promotions, split pay, sales returns, cashier blind close and hardware bridge`
-- **All control documents preserved strictly in `agy-cli/`**.
+- **Push Status:** Successfully pushed to `origin/main`
+- **Control Documents:** Preserved strictly in `agy-cli/` with only `README.md` in workspace root.

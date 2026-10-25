@@ -2,8 +2,8 @@
 **From:** Argon (Director & CTO — Head Office / Gemini Web)
 **To:** Agy CLI Execution Squad (5x Senior Devs — Flash 3.8 High)
 **Repository:** `https://github.com/Ganesaperumal/TI_ERP.git`
-**Last Verified Commit:** `327779a470d359db1a6047cac0357bc9b89ae978`
-**Dispatch ID:** `DISPATCH-006` (`REMOD-501` Fixes + Milestone 6: GST Compliance (GSTR-1/2B/3B, E-Invoice/E-Way Bill), Automated Double-Entry Accounting, UPI/Bank MDR Reconciliation, 1-Click Tally Prime XML Bridge & HR/Payroll)
+**Last Verified Commit:** `594dae17c99c253b00f79c4d956b8138045524ae`
+**Dispatch ID:** `DISPATCH-007` (`REMOD-601` Fixes + Final Milestone 7: LAN-to-Cloud Sync Engine, BYOK AI "Ask My Supermarket" Copilot & Dead-Stock Cleanser, Regional Transliteration, Owner Mobile Command Center, 10:30 PM Nightly Closing Report & Super-Admin SaaS License Portal)
 **Status:** `EXECUTE IMMEDIATELY`
 
 ---
@@ -11,147 +11,123 @@
 ## SECTION A: DOCUMENTATION & STATE TRACKER UPDATES (MANDATORY FIRST STEP)
 
 1. **Update `agy-cli/02_STATE_TRACKER.md`:**
-   - Mark **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge** as `COMPLETED & VERIFIED`.
-   - Mark **M5: CRM, Loyalty, Khata, Home Delivery & Queue-Buster mPOS (`WO-501` to `WO-505`)** as `COMPLETED — PENDING REMOD-501 PATCH (Commit: 327779a470d359db1a6047cac0357bc9b89ae978)`.
-   - Mark **M6: GST, Double-Entry Accounting, Bank Recon, Tally Bridge & HR/Payroll (`WO-601` to `WO-605`)** as `IN_PROGRESS`.
+   - Mark **M5: CRM, Loyalty, Khata, Home Delivery & Queue-Buster mPOS** as `COMPLETED & VERIFIED`.
+   - Mark **M6: GST, Double-Entry Accounting, Bank Recon, Tally Bridge & HR/Payroll (`WO-601` to `WO-605`)** as `COMPLETED — PENDING REMOD-601 PATCH (Commit: 594dae17c99c253b00f79c4d956b8138045524ae)`.
+   - Mark **M7: LAN-to-Cloud Sync Engine, AI Copilot, Owner Mobile Command Center & SaaS License Portal (`WO-701` to `WO-705`)** as `IN_PROGRESS`.
 
 ---
 
-## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-501`)
+## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-601`)
 
-Fix these 2 production bugs caught during Argon CTO's inspection of Commit `327779a470d359db1a6047cac0357bc9b89ae978`:
+Fix these 2 accounting/tax edge cases caught during Argon CTO's inspection of Commit `594dae17c99c253b00f79c4d956b8138045524ae`:
 
-### 1. `[REMOD-501A]` Assigned to `DEV-2` — Remove Hardcoded UPI VPA & Store Name in `CustomerKhataService`
-- **File:** `apps/api/src/modules/crm/khata-giftcards/customer-khata.service.ts`
-- **Issue:** `sendWhatsappStatement` hardcoded `pa=tierp.store@okhdfcbank` and `pn=TI Supermarket` in the NPCI UPI URI.
-- **Fix:** Fetch the branch's merged `StoreConfig` (via `TenantBranchService.getMergedStoreConfig`) and `Branch` record, using the configured merchant UPI VPA and branch/tenant name dynamically.
+### 1. `[REMOD-601A]` Assigned to `DEV-2` — Include `cessAmount` in `booksTax` during GSTR-2B Reconciliation
+- **File:** `apps/api/src/modules/accounting/gst/gstr2b-reconciliation.service.ts`
+- **Issue:** When aggregating `booksTax` from `grn.lineItems`, `l.cessAmount` was omitted (`booksTax.add(l.cgstAmount).add(l.sgstAmount).add(l.igstAmount)`), causing false mismatches on aerated drinks and sin goods carrying GST Compensation Cess.
+- **Fix:** Include `.add(l.cessAmount ?? 0)` in `booksTax` across both matched and unmatched GRN loops.
 
-### 2. `[REMOD-501B]` Assigned to `DEV-1` & `DEV-3` — Proportionate Loyalty Point Reversal on Sales Return
-- **Files:** `apps/api/src/modules/pos/billing/pos-return.service.ts` & `apps/api/src/modules/crm/loyalty/loyalty-engine.service.ts`
-- **Issue:** When a customer returns items from an invoice that earned loyalty points, those earned points were not reversed, enabling point-redemption abuse.
-- **Fix:** Inside `PosReturnService.processSalesReturn()`, if the original `PosInvoice` has a `customerId` and `loyaltyPointsEarned > 0`, calculate the proportionate points to claw back:
-  $$\text{Points to Claw Back} = \text{round}\left(\text{Original Points Earned} \times \frac{\text{Total Refund Amount}}{\text{Original Invoice Net Payable}}\right)$$
-  Deduct those points from `Customer.loyaltyPointsBalance` and record a `POINTS_REVERSED_ON_RETURN` entry in `LoyaltyLedger`.
+### 2. `[REMOD-601B]` Assigned to `DEV-3` — Handle Negative MDR / Excess Settlement Credit in `BankReconciliationService`
+- **File:** `apps/api/src/modules/accounting/reconciliation-tally/bank-reconciliation.service.ts`
+- **Issue:** If `actualCredited > expectedGross` (`mdrFee < 0`, e.g., gateway incentive or rounding excess), the voucher only debited `actualCredited` and credited `expectedGross`, causing `AccountingVoucherService` to throw an unbalanced voucher exception.
+- **Fix:** If `mdrFee.lessThan(0)`, add a Credit line for `mdrFee.abs()` to Other Store/Settlement Income (`INCOME`) so $\sum \text{Debit} === \sum \text{Credit}$ always holds.
 
 ---
 
-## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 6 (`WO-601` TO `WO-605`)
+## SECTION C: NEW MODULAR WORK ORDERS — FINAL MILESTONE 7 (`WO-701` TO `WO-705`)
 
-Milestone 6 builds the complete **Auditor-Ready GST Compliance Suite, Automated Double-Entry Accounting Engine, Bank/UPI MDR Settlement Reconciliation, 1-Click Tally Prime XML Exporter, and Supermarket HR/Attendance/Payroll Module**.
+Milestone 7 completes the commercial SaaS & Model-B hybrid architecture: **Conflict-Free LAN-to-Cloud Delta Sync Engine, BYOK AI "Ask My Supermarket" Copilot & Dead-Stock Offer Designer, Regional Bilingual Transliteration & Legacy ERP Migrator, Owner Mobile Live Command Center + 10:30 PM Nightly WhatsApp Report, and the Software Vendor Super-Admin License Control Portal (`apps/cloud-admin`)**.
 
-### [WO-601] Assigned to `DEV-1` (Automated Double-Entry Accounting Engine, Chart of Accounts & Financial Statements)
-**Target Directory:** `apps/api/src/modules/accounting/core/`
+### [WO-701] Assigned to `DEV-1` (Model-B LAN-to-Cloud Delta Sync Engine, Conflict Resolver & Offline Outbox Worker)
+**Target Directory:** `apps/api/src/modules/sync/`
 **Tasks:**
-1. **Default Supermarket Chart of Accounts Auto-Seeder (`AccountingSetupService`):**
-   - Ensures every tenant has the standard Indian retail `AccountGroup` & `LedgerAccount` hierarchy across `ASSET`, `LIABILITY`, `INCOME`, and `EXPENSE`:
-     - *Assets:* Cash-in-Hand (Counter Drawers), Main Safe Cash, Bank Accounts (HDFC/SBI/ICICI), UPI/Card Pending Settlement Clearing Account, Inventory Asset (Closing Stock), Accounts Receivable (Customer Khata), GST Input Tax Credit (`CGST Input`, `SGST Input`, `IGST Input`, `Cess Input`), Staff Salary Advances.
-     - *Liabilities:* Accounts Payable (Sundry Creditors / Suppliers), GST Output Tax Liability (`CGST Output`, `SGST Output`, `IGST Output`, `Cess Output`), Customer Prepaid Gift Cards & Credit Note Liability.
-     - *Income:* Retail POS Sales, Wholesale B2B Sales, Other Store Income (Brand Display/End-Cap Rentals).
-     - *Expenses:* Cost of Goods Sold (COGS), Inventory Shrinkage/Wastage/Damage Write-off, Bank MDR & Payment Gateway Charges, Store Rent, Electricity/EB Bill, Packaging Materials, Staff Salaries & Incentives, Tempo Freight & Delivery Fuel.
-2. **Automated Double-Entry Journal Posting Engine (`AccountingVoucherService`):**
-   - Enforces the strict invariant: $\sum \text{Debit} === \sum \text{Credit}$ (`Decimal(15,2)`) on every `JournalVoucher` (`SALES`, `PURCHASE`, `RECEIPT`, `PAYMENT`, `CONTRA`, `JOURNAL`, `DEBIT_NOTE`, `CREDIT_NOTE`).
-   - **Auto-Posting Hooks (Zero Manual Bookkeeping):**
-     - `postPosZReportJournal(shiftId)`: Summarizes the shift's sales, COGS, GST Output, and tender splits into a balanced Double-Entry voucher.
-     - `postGrnPurchaseJournal(grnId)`: Posts Inventory Asset + GST Input Credit Dr $\rightarrow$ Supplier Payable Cr.
-     - `postWastageOrDamageWriteOff(ledgerId)`: Posts Inventory Shrinkage Expense Dr $\rightarrow$ Inventory Asset Cr.
-     - `postStoreExpenseVoucher(dto)`: Allows recording daily shop petty cash / rent / EB expenses with optional GST input credit.
-3. **Real-Time Financial Reports (`FinancialReportService`):**
-   - `GET /api/v1/accounting/reports/day-book` & `cash-bank-book`
-   - `GET /api/v1/accounting/reports/trial-balance`
-   - `GET /api/v1/accounting/reports/profit-and-loss`: Computes live Revenue, COGS (from `PosInvoiceLine.netLandingCostSnapshot`), Gross Profit, Operating Expenses, Shrinkage, and Net Profit, plus Live Closing Stock valuation from `BinStockBalance × InventoryBatch.netLandingCost`!
-   - `GET /api/v1/accounting/reports/balance-sheet`
+1. **Transactional Sync Outbox & Inbox Engine (`SyncEngineService` & Controller `/api/v1/sync`):**
+   - **Outbox Capture & Batch Push (`POST /api/v1/sync/outbox/queue` & `POST /api/v1/sync/push-to-cloud`):**
+     - Collects pending `SyncOutbox` mutations (`PENDING`, `FAILED`) ordered by `createdAt ASC`, batches them (up to 250 records per batch), and pushes them to the Cloud Sync endpoint with idempotency keys and `syncVersion`.
+   - **Cloud-to-Branch Pull (`GET /api/v1/sync/pull-from-cloud?branchId=...&sinceVersion=...`):**
+     - Allows a local store server to pull new master catalog items, price overrides, promotion rules, and inter-branch stock transfer dispatches (`GOODS_IN_TRANSIT`) created at Head Office.
+   - **Deterministic Conflict Resolution:**
+     - For append-only ledgers (`PosInvoice`, `StockLedger`, `JournalVoucher`, `LoyaltyLedger`), enforces idempotent upsert by UUID.
+     - For mutable masters (`Product`, `Customer`, `StoreConfig`), resolves conflicts using `[syncVersion DESC, updatedAt DESC]` and updates `lastSyncedAt`.
+   - **Sync Health & Diagnostics Endpoint (`GET /api/v1/sync/status?branchId=...`):**
+     - Returns `pendingOutboxCount`, `failedOutboxCount`, `lastSuccessfulSyncAt`, `isCloudReachable`, and a 1-click `POST /api/v1/sync/retry-failed` trigger.
 
 ---
 
-### [WO-602] Assigned to `DEV-2` (Auditor-Ready GST Compliance Engine: GSTR-1 JSON/CSV, GSTR-2B ITC Reconciliation, GSTR-3B & E-Invoice / E-Way Bill)
-**Target Directory:** `apps/api/src/modules/accounting/gst/`
+### [WO-702] Assigned to `DEV-2` (BYOK AI Copilot: "Ask My Supermarket" Natural Language Analytics, AI Dead-Stock & Expiry Offer Designer, and Bilingual Regional Name Transliterator)
+**Target Directory:** `apps/api/src/modules/ai-copilot/`
 **Tasks:**
-1. **GSTR-1 Government Portal Offline JSON & Summary Generator (`Gstr1Service`):**
-   - `GET /api/v1/accounting/gst/gstr1?branchId=...&month=...&year=...`:
-     - Aggregates all `PosInvoice` and `SalesReturn` records for the period into the exact official Indian GSTN sections:
-       1. **`b2b`**: Invoices where customer has a valid 15-digit `gstin` (grouped by GSTIN, invoice level, taxable value, CGST, SGST, IGST, Cess).
-       2. **`b2cl`**: Inter-state B2C invoices with value $> ₹2,50,000$.
-       3. **`b2cs`**: Consolidated B2C Small retail sales grouped by State Code + GST Rate Slab (`0%`, `5%`, `12%`, `18%`, `28%`).
-       4. **`cdnr` / `cdnur`**: Credit/Debit notes from `SalesReturn`.
-       5. **`hsn`**: Consolidated HSN-wise summary (`hsn_sc`, `uqc`, `qty`, `val`, `txval`, `iamt`, `camt`, `samt`, `csamt`).
-       6. **`doc_issue`**: Document series summary (First Invoice No, Last Invoice No, Total Issued, Cancelled/Voided Count, Net Issued).
-2. **GSTR-2B vs. Purchase Register Reconciliation (`Gstr2bReconciliationService`):**
-   - `POST /api/v1/accounting/gst/gstr2b-reconcile`:
-     - Accepts uploaded GSTR-2B JSON lines from the GST portal and matches them against the store's `GoodsReceiptNote` records by `Supplier GSTIN` + `Invoice Number` + `Taxable/Tax Value`.
-     - Categorizes every bill into:
-       - `EXACT_MATCH` (100% ITC Safe)
-       - `TAX_VALUE_MISMATCH` (Rounding or rate difference)
-       - `MISSING_IN_GSTR2B_SUPPLIER_NOT_FILED` (**ITC AT RISK!** Flags the supplier so the supermarket owner can hold their payment until they file GST!)
-       - `MISSING_IN_BOOKS` (Supplier filed an invoice not yet entered in GRN).
-3. **GSTR-3B Liability vs. ITC Offset Table (`GET /api/v1/accounting/gst/gstr3b`) & E-Invoice / E-Way Bill Generator (`POST /api/v1/accounting/gst/e-invoice/:invoiceId` & `e-way-bill`):**
-   - Computes Output Tax Liability (Table 3.1) minus Eligible ITC from GRNs (Table 4) = Net Tax Payable in Cash/Credit Ledger.
-   - Generates NIC E-Invoice JSON payload, simulated/live IRN hash, AckNo, Signed QR Code, and E-Way Bill Part-A/Part-B for B2B invoices and inter-branch stock transfers $> ₹50,000$.
+Expand `AiCopilotModule` with the remaining Section 8.5 commercial intelligence tools:
+1. **AI "Ask My Supermarket" Natural Language Query Copilot (`POST /api/v1/ai-copilot/ask-supermarket`):**
+   - Allows the owner to ask questions in English or Tamil/Hindi/regional language (e.g., *"Which 10 items gave me the highest profit this month?"*, *"Why did Counter 2 have bill voids yesterday?"*, *"Which suppliers have GST ITC at risk?"*).
+   - Safely classifies intent across live store metrics (`TOP_PROFIT_ITEMS`, `CASHIER_VOIDS_AUDIT`, `LOW_STOCK_REORDER`, `EXPIRING_BATCHES`, `DAILY_SALES_TENDER_BREAKUP`, `SUPPLIER_ITC_RISK`), queries the exact real-time PostgreSQL data for `branchId`, and synthesizes a clear, executive answer + structured data table using `AiProviderService`.
+2. **AI Dead-Stock & Near-Expiry Combo/Discount Cleanser (`POST /api/v1/ai-copilot/design-clearance-combos`):**
+   - Scans slow-moving batches (0 sales in last 30 days) and near-expiry batches (expiring in $\le 45$ days).
+   - Pairs slow-moving high-margin items with fast-moving anchor staples (like Sugar, Atta, or Oil) to automatically suggest profitable **Weekend Combo Kits** or **Clearance Promotion Rules**, with a 1-click **"Activate Promotion Rule"** endpoint!
+3. **Bilingual Regional Transliteration & Translation Helper (`POST /api/v1/ai-copilot/transliterate-product`):**
+   - Given an English product name (`"Ponni Boiled Rice 5kg"`, `"Toor Dal 1kg"`, `"Idhayam Gingelly Oil 1L"`) and target language (`ta-IN` Tamil, `hi-IN` Hindi, `kn-IN` Kannada, `te-IN` Telugu, `ml-IN` Malayalam), automatically returns the accurate regional script name (`"பொன்னி புழுங்கல் அரிசி 5 கிலோ"`, `"துவரம் பருப்பு 1 கிலோ"`) using a built-in Indian grocery dictionary + BYOK AI fallback so thermal receipts and shelf tags print bilingually out of the box!
 
 ---
 
-### [WO-603] Assigned to `DEV-3` (UPI/Card Bank Settlement & MDR Reconciliation + 1-Click Tally Prime XML Voucher Bridge)
-**Target Directory:** `apps/api/src/modules/accounting/reconciliation-tally/`
+### [WO-703] Assigned to `DEV-3` (Owner Mobile Live Command Center API, 10:30 PM Nightly WhatsApp Closing Summary Generator & SaaS Vendor License Control Engine)
+**Target Directory:** `apps/api/src/modules/owner-analytics/` & `apps/api/src/modules/saas-admin/`
 **Tasks:**
-1. **Bank & UPI/Card MDR Settlement Reconciliation Engine (`BankReconciliationService`):**
-   - Supermarkets process thousands of UPI (PhonePe, Paytm, GPay, Pine Labs) and Card transactions daily, while banks settle T+1 after deducting MDR/gateway charges.
-   - `GET /api/v1/accounting/recon/pending-settlements?branchId=...`: Lists unsettled `PosPaymentSplit` records grouped by payment mode/provider and date.
-   - `POST /api/v1/accounting/recon/settle-batch`:
-     - Accepts the bank/gateway settlement statement (`expectedGrossAmount`, `actualBankCreditedAmount`, `bankUtrNumber`, `settlementDate`).
-     - Automatically calculates the variance:
-       $$\text{MDR & Gateway Fee} = \text{Expected Gross Amount} - \text{Actual Bank Credited Amount}$$
-     - Atomically marks the `PosPaymentSplit` records as `SETTLED`, flags any abnormal shortage if variance exceeds configured MDR threshold %, and posts a balanced Double-Entry Journal Voucher (`Bank Account Dr`, `Bank MDR Charges Dr` $\rightarrow$ `UPI/Card Pending Clearing Account Cr`)!
-2. **1-Click Tally Prime XML & Excel Export Bridge (`TallyExportService`):**
-   - `GET /api/v1/accounting/tally/export-xml?branchId=...&from=...&to=...`:
-     - Generates a valid **Tally Prime `<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA>...` XML payload** containing:
-       - Master Ledgers (Suppliers, Customers, GST Ledgers, Sales/Purchase Accounts)
-       - All Sales Vouchers (or Consolidated Daily POS Z-Report Sales Vouchers), Purchase GRN Vouchers, Receipt/Payment Vouchers, and Debit/Credit Notes.
-     - Marks exported vouchers with `isSyncedToTally: true` so external Chartered Accountants can import the entire month into Tally Prime in 1 click with zero manual typing!
+1. **Owner Live Command Center Aggregator (`GET /api/v1/owner/live-dashboard?tenantId=...&branchId=...`):**
+   - Returns real-time supermarket KPIs in a single fast payload:
+     - **Today's Live Revenue, Bill Count, Average Basket Value, and Live Gross Profit (₹ and %)** (computed from `PosInvoiceLine.netLandingCostSnapshot`).
+     - **Tender Split Breakup:** Cash vs. UPI vs. Card vs. Sodexo vs. Customer Khata vs. Loyalty Points.
+     - **Live Counter Status:** Active cashiers, terminal status, current shift cash in drawer, and Safe Drops.
+     - **Top 20 Selling SKUs & Categories Today.**
+     - **Security & Shrinkage Alerts:** Today's voided lines, cancelled bills, manual price overrides, negative stock sales, and low-rating customer feedback ($\le 3$ stars).
+2. **Automated 10:30 PM Nightly Store Closing Report (`POST /api/v1/owner/generate-nightly-closing-report`):**
+   - Compiles the complete **1-Page Executive Daily Closing Report** (Sales, Gross Profit, Cash in Safe, UPI Pending Bank Settlement, Purchase GRNs Entered, Stock-Outs, Near-Expiry Value, and Cashier Shift Shortages) formatted for instant WhatsApp PDF/message dispatch at 10:30 PM!
+3. **Software Vendor Super-Admin License & AMC Control API (`SaasLicenseAdminService` — `/api/v1/saas-admin/licenses`):**
+   - For YOU (the Software Owner selling TI-ERP to 100+ supermarkets):
+   - Create/Activate/Suspend client `SaaSLicense` & `Tenant` accounts.
+   - Toggle enabled modules per client (`BASIC_POS`, `MULTI_BRANCH`, `AI_COPILOT`, `TALLY_BRIDGE`, `HR_PAYROLL`, `WHATSAPP_CRM`).
+   - Track Annual Maintenance Contract (`amcExpiryDate`) renewals, client branch/counter limits, and issue license keys.
 
 ---
 
-### [WO-604] Assigned to `DEV-4` (Supermarket HR, Salesman Line-Item Commissions, Biometric/Selfie Attendance & Automated Monthly Payroll Engine)
-**Target Directory:** `apps/api/src/modules/hr/`
+### [WO-704] Assigned to `DEV-4` (Next.js Cloud Portal in `apps/cloud-admin`: Owner Mobile Command Center PWA + Software Vendor Super-Admin License Control Panel)
+**Target Directory:** `apps/cloud-admin/src/app/`
 **Tasks:**
-1. **Staff Master, RBAC Cost-Masking Guard & Shift Roster (`StaffHrService`):**
-   - Manage employees, roles, shift rosters (`MORNING`, `EVENING`, `FULL_DAY`), base salary, overtime hourly rate, and salesman commission %.
-   - Provide a reusable `CostMaskingInterceptor` or helper that strips `purchaseRate`, `netLandingCost`, and `actualMarginPct` from API responses if the requesting user's `Role.maskCostAndMargin === true`.
-2. **Biometric Webhook & Geo-Fenced Selfie Attendance (`AttendanceService`):**
-   - `POST /api/v1/hr/attendance/check-in` & `check-out`: Records staff attendance (`PRESENT`, `HALF_DAY`, `LATE`, `ABSENT`, `WEEKLY_OFF`), calculates `overtimeHours` using `Decimal`, and supports both Biometric device webhooks and POS/Mobile Selfie + GPS coordinates.
-3. **Salesman Line-Item Commission & Staff Advance / Grocery Khata (`StaffKhataAndCommissionService`):**
-   - `GET /api/v1/hr/commissions?branchId=...&month=...&year=...`: Aggregates `PosInvoiceLine` records where `salesmanId` is tagged, computing exact staff incentives earned across garments/vessels/special stock.
-   - `POST /api/v1/hr/staff-khata`: Records mid-month salary cash advances and staff grocery purchases.
-4. **Automated Supermarket Payroll Calculator (`PayrollService`):**
-   - `POST /api/v1/hr/payroll/generate-monthly`:
-     - For every active employee in the branch, computes the exact locked-in supermarket payroll formula using `Decimal(15,2)`:
-       $$\text{Net Monthly Payout} = (\text{Pro-Rata Base Salary} + \text{Overtime Pay} + \text{Salesman Commissions}) - (\text{Leave Deductions} + \text{Mid-Month Cash Advances} + \text{Staff Grocery Purchases} + \text{POS Counter Cash Shortages})$$
-     - Persists `MonthlyPayroll` records, generates printable staff payslips, and posts the salary journal voucher to the Accounting engine!
+Transform `apps/cloud-admin` (Next.js 14 App Router) from a placeholder into the complete dual-mode Cloud Portal:
+1. **View 1 — Owner Mobile Live Command Center (`/owner-dashboard` & integrated in `/`):**
+   - Mobile-first, executive dark/light dashboard showing:
+     - Multi-Branch switcher (`All Branches (Consolidated HO)` vs. `Main Supermarket` vs. `Branch 2`).
+     - Live Sales, Real-Time Gross Profit Margin %, Cash vs. UPI vs. Khata meters, Active POS Terminal status cards, Red Anti-Theft Exception/Void alerts, Top Selling Items, and 1-click **"Send 10:30 PM Nightly WhatsApp Closing Summary"**.
+     - Embedded **"Ask My Supermarket" AI Copilot Chat Drawer** where the owner can tap or type questions on their phone!
+2. **View 2 — Software Vendor Super-Admin License Control Portal (`/super-admin` & tab in `/`):**
+   - Executive SaaS control center for managing all supermarket clients:
+     - Active Supermarket Clients table (Store Name, License Key, Plan Tier, Branches/Counters Used, AMC Expiry Countdown, License Status `ACTIVE` / `GRACE_PERIOD` / `SUSPENDED`).
+     - **Module Feature-Flag Matrix:** 1-click switches to enable/disable `Multi-Branch`, `BYOK AI Copilot`, `Tally XML Bridge`, `HR & Payroll`, and `Home Delivery` per client!
+     - **1-Click New Supermarket Tenant Provisioner:** Onboards a new supermarket client with pre-loaded 50k+ FMCG seed catalog in 30 seconds.
 
 ---
 
-### [WO-605] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: GST Filing & 2B Recon Hub, Double-Entry Accounting & Tally Export Studio, Bank/UPI Settlement Recon & HR/Payroll Page)
-**Target Directory:** `apps/pos-web/src/features/accounting/` & `apps/pos-web/src/features/hr/` & `apps/pos-web/src/App.tsx`
+### [WO-705] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: AI Copilot & Dead-Stock Cleanser Studio, LAN-to-Cloud Sync Status Monitor, Legacy ERP Migrator & Complete End-to-End Navigation Polish)
+**Target Directory:** `apps/pos-web/src/features/ai-sync/` & `apps/pos-web/src/App.tsx`
 **Tasks:**
-Build high-density executive finance, tax, and HR screens in `apps/pos-web` and wire them into `App.tsx`:
-1. **GST Compliance, GSTR-2B Reconciliation, Accounting & Tally Prime Hub (`FinanceGstAndTallyPage.tsx`):**
-   - **Tab 1 (Live P&L, Trial Balance & Expense Entry):** Shows real-time Revenue, COGS, Gross Margin %, Closing Stock Valuation, Operating Expenses, and Net Profit + quick Store Expense voucher form.
-   - **Tab 2 (GSTR-1, GSTR-3B & E-Invoicing):** 1-click download of GST Portal GSTR-1 JSON, HSN Summary table, Document Series table, and E-Invoice IRN generator.
-   - **Tab 3 (GSTR-2B vs. Purchase GRN Reconciliation):** Highlights suppliers who haven't filed GST (**"ITC AT RISK — HOLD PAYMENT"** badge in red!).
-   - **Tab 4 (UPI/Card Bank Settlement Recon & 1-Click Tally Prime XML Export):** Reconcile T+1 UPI/Card payouts (auto-calculating bank MDR charges) and 1-click **"Download Tally Prime XML"**.
-2. **Supermarket HR, Attendance, Staff Khata & Monthly Payroll Studio (`HrAttendanceAndPayrollPage.tsx`):**
-   - **Tab 1 (Attendance & Shift Roster):** Daily check-in/out board, overtime hours, and biometric/selfie status.
-   - **Tab 2 (Staff Advances, Grocery Khata & Cashier POS Shortages):** View mid-month salary advances, staff grocery bills, and auto-linked Z-Report counter cash shortages.
-   - **Tab 3 (Salesman Incentives & 1-Click Monthly Payroll Run):** Run monthly payroll showing the full breakdown (`Base + OT + Commission - Leaves - Advances - Groceries - Counter Shortages = Net Pay`) with printable Payslip view.
+1. **AI Supermarket Copilot, Dead-Stock Combo Designer & Legacy ERP Importer (`AiCopilotAndSyncPage.tsx`):**
+   - **Tab 1 ("Ask My Supermarket" AI Chat & Bilingual Transliterator):** Interactive natural-language query console + instant English-to-Tamil/Hindi/Regional product name transliteration tester.
+   - **Tab 2 (AI Dead-Stock & Near-Expiry Combo Cleanser):** Displays AI-recommended Weekend Combos pairing dead-stock/near-expiry items with fast-moving staples, showing projected margin recovery and 1-click **"Create & Activate Combo Offer"**.
+   - **Tab 3 (Model-B LAN-to-Cloud Sync Monitor & Legacy ERP Migrator):** Live sync outbox/inbox health status, manual **"Sync Now with Cloud HO"** button, and 1-click **Legacy ERP Importer** (import templates for Tally, GoFrugal, Marg, and CSV/Excel item/customer/supplier balances).
+2. **Unified Navigation & Production Readiness Polish (`apps/pos-web/src/App.tsx` & `README.md`):**
+   - Ensure all 12 core screens across `apps/pos-web` are cleanly accessible from the top/side navigation bar with keyboard shortcuts, role badges, live LAN/Cloud sync indicator, and store branch switcher.
+   - Update root `README.md` with the complete **TI-ERP Production Deployment, Docker Startup, Hardware Bridge Setup, and Architecture Guide**.
 
 ---
 
-## SECTION D: MANDATORY AUTOMATED REPORT GENERATION (`agy-cli/WO_TO_HO_REPORT.md`)
+## SECTION D: MANDATORY FINAL MILESTONE REPORT (`agy-cli/WO_TO_HO_REPORT.md`)
 
-When `REMOD-501` (`A`, `B`) and `WO-601` through `WO-605` are complete:
-1. Run `pnpm --filter @ti-erp/database prisma validate`, `pnpm -r typecheck`, and `pnpm build` and verify **0 errors** across all 6 packages.
-2. Commit all work to `main` and generate `agy-cli/WO_TO_HO_REPORT.md` containing:
-   - Executive Summary & Verified Commit SHA
-   - `REMOD-501` verification snippets (Dynamic UPI VPA from `StoreConfig` + Proportionate Loyalty Point Clawback on Sales Return)
-   - Work Order Completion Matrix (`WO-601` to `WO-605`)
-   - Core Milestone 6 algorithm snippets (`AccountingVoucherService`, `Gstr2bReconciliationService`, `BankReconciliationService`, `TallyExportService`, and `PayrollService.generateMonthlyPayroll`)
+When `REMOD-601` (`A`, `B`) and `WO-701` through `WO-705` are complete:
+1. Update `agy-cli/02_STATE_TRACKER.md` marking **M1 through M7 as `100% COMPLETED & VERIFIED`**.
+2. Run `pnpm --filter @ti-erp/database prisma validate`, `pnpm -r typecheck`, and `pnpm build` — MUST show **0 errors** across all 6 workspace packages (`@ti-erp/shared-types`, `@ti-erp/database`, `@ti-erp/hardware-bridge`, `@ti-erp/api`, `@ti-erp/pos-web`, `@ti-erp/cloud-admin`).
+3. Commit all work to `main` and generate `agy-cli/WO_TO_HO_REPORT.md` containing:
+   - Executive Summary & Final Verified Commit SHA
+   - `REMOD-601` verification snippets (`cessAmount` in GSTR-2B recon + negative MDR handling in Bank Recon)
+   - Work Order Completion Matrix (`WO-701` to `WO-705`)
+   - Core Milestone 7 algorithm snippets (`SyncEngineService`, `AiCopilotService.askSupermarket` & `transliterateProduct`, `OwnerAnalyticsService`, and `SaasLicenseAdminService`)
+   - Full M1–M7 Master Blueprint Completion Checklist
    - Exact terminal outputs of `prisma validate`, `pnpm -r typecheck`, `pnpm build`, and `git show --stat HEAD`.
-3. Push to `origin/main` so the Boss can hand `agy-cli/WO_TO_HO_REPORT.md` to Argon CTO.
+4. Push to `origin/main` and hand `agy-cli/WO_TO_HO_REPORT.md` to Argon CTO for final sign-off!

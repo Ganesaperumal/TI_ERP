@@ -84,7 +84,7 @@ export class Gstr2bReconciliationService {
 
         for (const l of matchedGrn.lineItems) {
           booksTaxable = booksTaxable.add(l.taxableAmount);
-          booksTax = booksTax.add(l.cgstAmount).add(l.sgstAmount).add(l.igstAmount);
+          booksTax = booksTax.add(l.cgstAmount).add(l.sgstAmount).add(l.igstAmount).add(l.cessAmount ?? 0);
         }
 
         const taxDiff = booksTax.sub(gstr2bTax).abs();
@@ -151,7 +151,7 @@ export class Gstr2bReconciliationService {
 
         for (const l of grn.lineItems) {
           booksTaxable = booksTaxable.add(l.taxableAmount);
-          booksTax = booksTax.add(l.cgstAmount).add(l.sgstAmount).add(l.igstAmount);
+          booksTax = booksTax.add(l.cgstAmount).add(l.sgstAmount).add(l.igstAmount).add(l.cessAmount ?? 0);
         }
 
         if (booksTax.greaterThan(0)) {

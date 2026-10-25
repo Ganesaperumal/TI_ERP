@@ -599,6 +599,7 @@ model GrnLineItem {
   cgstAmount            Decimal        @default(0) @db.Decimal(15, 2)
   sgstAmount            Decimal        @default(0) @db.Decimal(15, 2)
   igstAmount            Decimal        @default(0) @db.Decimal(15, 2)
+  cessAmount            Decimal        @default(0) @db.Decimal(15, 2)
   netLandingCost        Decimal        @db.Decimal(15, 4) // Computed true landed unit cost
   targetMrp             Decimal        @db.Decimal(15, 2)
   retailSellingPrice    Decimal        @db.Decimal(15, 2)

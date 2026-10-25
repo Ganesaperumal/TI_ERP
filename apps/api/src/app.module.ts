@@ -12,6 +12,9 @@ import { PosModule } from './modules/pos/pos.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { HrModule } from './modules/hr/hr.module';
+import { SyncModule } from './modules/sync/sync.module';
+import { OwnerAnalyticsModule } from './modules/owner-analytics/owner-analytics.module';
+import { SaasAdminModule } from './modules/saas-admin/saas-admin.module';
 
 @Module({
   imports: [
@@ -26,6 +29,9 @@ import { HrModule } from './modules/hr/hr.module';
     CrmModule,
     AccountingModule,
     HrModule,
+    SyncModule,
+    OwnerAnalyticsModule,
+    SaasAdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

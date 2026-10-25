@@ -111,13 +111,8 @@ export class BankReconciliationService {
     const expectedGross = new Decimal(dto.expectedGrossAmount).toDecimalPlaces(2);
     const actualCredited = new Decimal(dto.actualBankCreditedAmount).toDecimalPlaces(2);
 
-    if (actualCredited.greaterThan(expectedGross)) {
-      throw new BadRequestException(
-        `Actual credited amount (₹${actualCredited.toFixed(2)}) cannot exceed expected gross amount (₹${expectedGross.toFixed(2)}) without adjustment`,
-      );
-    }
-
     // MDR & Gateway Charges = Expected Gross - Actual Bank Credited
+    // (If negative, bank credited more than expected e.g. gateway incentive or rounding excess)
     const mdrFee = expectedGross.sub(actualCredited).toDecimalPlaces(2);
     const mdrPct = expectedGross.greaterThan(0)
       ? mdrFee.mul(100).div(expectedGross).toDecimalPlaces(2)
@@ -135,6 +130,7 @@ export class BankReconciliationService {
 
     const bankAcc = await getAccount('ASSET_BANK_MAIN');
     const mdrExpAcc = await getAccount('EXP_BANK_MDR_CHARGES');
+    const otherIncomeAcc = await getAccount('INC_OTHER_STORE_INCOME');
     const clearingAcc = await getAccount('ASSET_UPI_CARD_CLEARING');
 
     return this.prisma.$transaction(async (tx) => {
@@ -150,15 +146,16 @@ export class BankReconciliationService {
             data: {
               bankSettlementStatus: BankSettlementStatusEnum.SETTLED,
               bankSettlementRef: dto.bankUtrNumber,
-              bankMdrFee: splitMdr,
+              bankMdrFee: splitMdr.greaterThanOrEqualTo(0) ? splitMdr : new Decimal(0),
             },
           });
         }
       }
 
       // 2. Post Balanced Double-Entry Clearing Journal
-      // Dr: Bank Account (actual money in bank)
-      // Dr: Bank MDR Charges (fee deducted by gateway)
+      // Dr: Bank Account (actual money credited in bank)
+      // If mdrFee > 0: Dr: Bank MDR Charges (fee deducted by gateway)
+      // If mdrFee < 0: Cr: Other Store / Settlement Income (incentive/excess credited)
       // Cr: UPI/Card Clearing Account (clears out the pending receivable asset)
       const lines = [
         {
@@ -175,6 +172,14 @@ export class BankReconciliationService {
           debitAmount: mdrFee,
           creditAmount: new Decimal(0),
           narration: `Bank MDR / EDC Gateway Charges (${mdrPct.toFixed(2)}%)`,
+        });
+      } else if (mdrFee.lessThan(0)) {
+        // [REMOD-601B] Handle Negative MDR / Excess Settlement Credit
+        lines.push({
+          ledgerAccountId: otherIncomeAcc.id,
+          debitAmount: new Decimal(0),
+          creditAmount: mdrFee.abs(),
+          narration: `Bank Settlement Incentive / Excess Gain (${mdrFee.abs().toFixed(2)})`,
         });
       }
 

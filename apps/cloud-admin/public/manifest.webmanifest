@@ -1,0 +1,20 @@
+{
+  "name": "TI-ERP Owner Command Center & Cloud HO",
+  "short_name": "TI-ERP Owner",
+  "description": "Multi-Branch Head Office, Owner Dashboard & SaaS Super-Admin Portal",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

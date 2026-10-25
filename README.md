@@ -172,6 +172,46 @@ pnpm --filter @ti-erp/hardware-bridge start
 
 ---
 
+## 🎯 Client Meeting PWA & Offline Pitch Guide
+
+TI-ERP is engineered with an installable **Progressive Web App (PWA)** architecture and **Network-First with Cache-Fallback Service Workers** (`sw.js`). You can demonstrate every single capability of TI-ERP on a laptop, tablet, or smartphone during client meetings—**100% offline**, without Docker or local servers running, and without switching browser ports!
+
+### 1. 1-Click Launch for Client Demos
+```bash
+# Build production bundles
+pnpm build
+
+# Launch the production PWA server on local network
+pnpm pwa:preview
+# Open http://localhost:5173 on your laptop, or open via local Wi-Fi IP on an iPad / Android tablet!
+```
+
+### 2. Installing TI-ERP as a Native Desktop / Tablet App
+Click the **"📲 Install App"** button in the top navigation bar:
+- **Desktop Chrome / Edge / Brave:** Click the **Install** icon in the URL address bar or select menu `⋮` &rarr; `Install TI-ERP POS`.
+- **Apple iPad / iPhone (Safari):** Tap the **Share** button (`⎋`) &rarr; tap **"Add to Home Screen"**.
+- **Android Tablet / Phone:** Tap `⋮` &rarr; tap **"Install app"** or **"Add to Home screen"**.
+
+### 3. Running the 7-Step Executive Sales Pitch Tour
+Click the golden **"🎯 Client Pitch Mode: ON"** button in the header of `apps/pos-web` to activate the guided sales tour ribbon. Use **Next ➡** or click any step to showcase the exact competitive differentiator to supermarket owners:
+
+1. **Step 1: 3-Sec POS & Scale Barcode (`POS Billing`)**
+   - *Pitch:* Sub-second keyboard billing (`F1`-`F12`), weighing scale barcode prefix `99`, LAN hold/recall, split tender, and dual customer display.
+2. **Step 2: AI Bill OCR & Margin Guardrail (`Smart GRN & Costing`)**
+   - *Pitch:* Zero manual data entry. AI invoice OCR auto-extracts lines, computes true Net Landing Cost (apportioning freight/loading), and alerts if selling price yields negative margin before invoice approval.
+3. **Step 3: 50kg->1kg Repack & 2-Up Labels (`Repacking Studio`)**
+   - *Pitch:* Zero unit cost inflation (`₹45.38/pouch`, `+21.8%` gross margin). Generates 2-up barcode stickers and automatically converts bulk stock to retail bags in the immutable stock ledger.
+4. **Step 4: Khata WhatsApp & Missing Ration (`CRM & Khata`)**
+   - *Pitch:* Zero bad debt. WhatsApp automated payment links, customer OTP points redemption, and discovery of monthly missing ration baskets.
+5. **Step 5: GSTR-2B ITC Risk & Tally XML (`Finance, GST & Tally`)**
+   - *Pitch:* Reconcile supplier GSTR-2B against GRNs to eliminate tax credit leakage, and 1-click XML export to Tally Prime double-entry accounting.
+6. **Step 6: Cashier Shortage->Payroll Link (`HR & Payroll`)**
+   - *Pitch:* End-of-shift register cash shortages automatically link to biometric staff salary deductions without manual HR reconciliation.
+7. **Step 7: Owner Mobile App & 10:30PM WhatsApp (`Owner Mobile & Cloud PWA`)**
+   - *Pitch:* Interactive smartphone bezel frame showing live sales, gross profit (`+21.8%`), cash/UPI/Khata split, 1-click **10:30 PM WhatsApp closing report push simulation**, interactive **"Ask My Supermarket" AI Copilot**, and 10-second SaaS tenant provisioning.
+
+---
+
 ## 🔒 Security, Compliance & Anti-Theft Guardrails
 
 - **Zero Unrecorded Drawer Kicks:** Every drawer open signal is cross-referenced with a finalized `PosPaymentSplit`. Unmatched manual key openings generate an immediate `NO_SALE_DRAWER_KICK` exception in the Owner Command Center.

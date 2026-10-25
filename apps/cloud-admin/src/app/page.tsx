@@ -4,6 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { cloudApiClient } from '../lib/api-client';
 
 // Mock types for SaaS & Owner Dashboard
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
 interface SupermarketClient {
   id: string;
   customerName: string;
@@ -107,6 +112,45 @@ export default function CloudAdminHome() {
   const [showNightlyReportModal, setShowNightlyReportModal] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean | null>(null);
+
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
+  const [isInstalled, setIsInstalled] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', () => {
+      setIsInstalled(true);
+      setDeferredPrompt(null);
+    });
+    if (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      ('standalone' in window.navigator && (window.navigator as unknown as { standalone?: boolean }).standalone)
+    ) {
+      setIsInstalled(true);
+    }
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice && choice.outcome === 'accepted') {
+        setIsInstalled(true);
+      }
+      setDeferredPrompt(null);
+    } else {
+      setShowInstallGuide(true);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -404,6 +448,28 @@ export default function CloudAdminHome() {
               <span>🛡️</span> Super-Admin SaaS Licenses
             </button>
           </div>
+
+          <button
+            onClick={handleInstallClick}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              backgroundColor: isInstalled ? '#1e293b' : '#0284c7',
+              color: '#ffffff',
+              border: `1px solid ${isInstalled ? '#334155' : '#38bdf8'}`,
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: isInstalled ? 'none' : '0 2px 8px rgba(2, 132, 199, 0.4)',
+              transition: 'all 0.15s ease',
+            }}
+            title="Install TI-ERP as a standalone desktop or mobile Progressive Web App"
+          >
+            <span>{isInstalled ? '✅ PWA Installed' : '📲 Install App'}</span>
+          </button>
         </div>
       </header>
 
@@ -1418,6 +1484,105 @@ export default function CloudAdminHome() {
                 }}
               >
                 Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL 3: PWA INSTALL GUIDE MODAL                               */}
+      {/* ============================================================== */}
+      {showInstallGuide && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '16px',
+            backdropFilter: 'blur(4px)',
+          }}
+          onClick={() => setShowInstallGuide(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#0f172a',
+              border: '1px solid #38bdf8',
+              borderRadius: '16px',
+              maxWidth: '520px',
+              width: '100%',
+              padding: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '24px' }}>📲</span>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#f8fafc', fontWeight: 800 }}>
+                  Install TI-ERP as a Native App
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowInstallGuide(false)}
+                style={{ backgroundColor: 'transparent', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: 1.5, marginBottom: '20px' }}>
+              TI-ERP is engineered with Progressive Web App (PWA) architecture with offline Service Workers. You can install it on your laptop, tablet, or smartphone for full-screen offline execution during client pitches.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ backgroundColor: '#1e293b', padding: '14px', borderRadius: '10px', borderLeft: '4px solid #38bdf8' }}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#38bdf8', marginBottom: '4px' }}>
+                  💻 Chrome / Edge / Desktop Brave
+                </div>
+                <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5 }}>
+                  Click the <strong>Install</strong> icon on the right side of the address bar, or click browser menu (<strong>⋮</strong>) &rarr; <strong>Install TI-ERP Cloud Command Center</strong>.
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#1e293b', padding: '14px', borderRadius: '10px', borderLeft: '4px solid #34d399' }}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#34d399', marginBottom: '4px' }}>
+                  📱 Apple iPad / iPhone (Safari)
+                </div>
+                <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5 }}>
+                  Tap the <strong>Share</strong> button (box with upward arrow <span style={{ fontWeight: 'bold' }}>⎋</span>) at the bottom &rarr; Scroll down and tap <strong>"Add to Home Screen"</strong>.
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#1e293b', padding: '14px', borderRadius: '10px', borderLeft: '4px solid #fbbf24' }}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#fbbf24', marginBottom: '4px' }}>
+                  🤖 Android (Chrome / Firefox)
+                </div>
+                <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5 }}>
+                  Tap the three dots menu (<strong>⋮</strong>) in the top-right corner &rarr; Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowInstallGuide(false)}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '10px 20px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Got It, Close Guide
               </button>
             </div>
           </div>

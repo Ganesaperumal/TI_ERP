@@ -101,6 +101,8 @@ Across `packages/database/prisma/schema/`:
 
 ## 4. GIT STATUS & REPOSITORY COMMIT
 
-- **Branch:** `main`
+- **Branch:** `main` (tracking `origin/main`)
 - **Remote Target:** `https://github.com/Ganesaperumal/TI_ERP.git`
-- **Milestone 1 State:** Complete and ready for Head Office review.
+- **Initial Commit Hash:** `b9512fb7e0f4d1bc56d2c5f895ce954763bf221b`
+- **Pushed Status:** Successfully pushed to `origin/main` on GitHub.
+- **Milestone 1 State:** Complete, verified with 0 errors, and ready for Head Office review.

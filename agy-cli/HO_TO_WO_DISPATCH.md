@@ -2,8 +2,8 @@
 **From:** Argon (Director & CTO — Head Office / Gemini Web)
 **To:** Agy CLI Execution Squad (5x Senior Devs — Flash 3.8 High)
 **Repository:** `https://github.com/Ganesaperumal/TI_ERP.git`
-**Last Verified Commit:** `ff1e4fb80f2d9fdfc41a37a1c726ee9aa7cbb3eb`
-**Dispatch ID:** `DISPATCH-003` (`REMOD-201` Bug Fixes + Milestone 3: Procurement, Auto-Reorder, Fast & 3-Way Match GRN, Net Landing Cost & Margin Guardrail, Consignment & BYOK AI Invoice OCR)
+**Last Verified Commit:** `b2d7739a53faa6f2089bf640297a7ae2654ab7ff`
+**Dispatch ID:** `DISPATCH-004` (`REMOD-301` Fixes + Milestone 4: High-Speed POS Billing Engine, Promotions & Cart Upsell, Split Payments, Sales Returns/Exchanges, Shift Blind Close Z-Report & Full Hardware Bridge)
 **Status:** `EXECUTE IMMEDIATELY`
 
 ---
@@ -11,142 +11,152 @@
 ## SECTION A: DOCUMENTATION & STATE TRACKER UPDATES (MANDATORY FIRST STEP)
 
 1. **Update `agy-cli/02_STATE_TRACKER.md`:**
-   - Mark **M2: Core Masters & Inventory Engine (`WO-201` to `WO-205`)** as `COMPLETED — PENDING REMOD-201 PATCH (Commit: ff1e4fb80f2d9fdfc41a37a1c726ee9aa7cbb3eb)`.
-   - Mark **M3: Procurement, Supplier & AI OCR Engine (`WO-301` to `WO-305`)** as `IN_PROGRESS`.
+   - Mark **M2: Core Masters & Inventory Engine** as `COMPLETED & VERIFIED`.
+   - Mark **M3: Procurement, Supplier & AI OCR Engine (`WO-301` to `WO-305`)** as `COMPLETED — PENDING REMOD-301 PATCH (Commit: b2d7739a53faa6f2089bf640297a7ae2654ab7ff)`.
+   - Mark **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge (`WO-401` to `WO-405`)** as `IN_PROGRESS`.
 
 ---
 
-## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-201`)
+## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-301`)
 
-During Argon CTO's line-by-line inspection of the embedded code in `WO_TO_HO_REPORT.md` (Commit `ff1e4fb80f2d9fdfc41a37a1c726ee9aa7cbb3eb`), 3 critical runtime/business-logic bugs were caught. Fix these BEFORE merging Milestone 3:
+Fix these 2 production edge cases caught during Argon CTO's audit of Commit `b2d7739a53faa6f2089bf640297a7ae2654ab7ff`:
 
-### 1. `[REMOD-201A]` Assigned to `DEV-2` — Fix Multi-UOM Barcode Resolution in `CatalogService.lookup()`
-- **File:** `apps/api/src/modules/catalog/catalog.service.ts`
-- **Issue:** `lookup()` checks `ProductBarcode` and `shortPluCode`/`skuCode`, plus `scaleRule`, but does NOT check `ProductUomConversion.barcode` (e.g., when a cashier scans a Master Carton or Box barcode). Also replace `parseFloat(weightRaw) / Math.pow(...)` with `new Decimal(weightRaw).div(new Decimal(10).pow(scaleRule.weightDecimals))`.
-- **Fix:** Add a lookup against `prisma.productUomConversion.findFirst({ where: { barcode: trimmedCode, product: { tenantId: branch.tenantId } }, include: { product: { include: { hsn: true, uomConversions: true, barcodes: true } } } })` returning `resolvedBy: 'UOM_CONVERSION_BARCODE'`, the matched `uomConversion` (`uomName`, `conversionFactor`, tier price), and `product`.
+### 1. `[REMOD-301A]` Assigned to `DEV-2` — Weighted Average Net Landing Cost When Merging Into an Existing Active Batch
+- **File:** `apps/api/src/modules/procurement/grn/grn.service.ts`
+- **Issue:** In `createFastDirectGrn()`, if `batch` already exists, `netLandingCost` is overwritten with `costing.netLandingCostPerBaseUnit`. If that batch already had positive stock (`existingQty > 0`), overwriting its unit cost corrupts inventory valuation.
+- **Fix:** Query total existing positive stock for `batch.id` across the branch (`existingQty`). If `existingQty.greaterThan(0)`, compute weighted average landing cost using `Decimal`:
+  $$\text{Weighted Net Landing Cost} = \frac{(\text{existingQty} \times \text{batch.netLandingCost}) + (\text{costing.totalReceivedUnits} \times \text{costing.netLandingCostPerBaseUnit})}{\text{existingQty} + \text{costing.totalReceivedUnits}}$$
+  Otherwise, use `costing.netLandingCostPerBaseUnit`.
 
-### 2. `[REMOD-201B]` Assigned to `DEV-3` — Fix Crash on Zero-Stock `ALLOW` & Floating-Point Math in `InventoryBatchService.resolveBatchForPosSale()`
-- **File:** `apps/api/src/modules/inventory/inventory-batch.service.ts`
-- **Issues Found:**
-  1. When `balances.length === 0` and `negativeStockRule === ALLOW` (or `WARN_PIN` with a valid `supervisorPin`), execution continues to `const bestBatchBalance = balances[0]; const resolvedBatch = bestBatchBalance.batch;`, which crashes with `TypeError: Cannot read properties of undefined (reading 'batch')`!
-  2. It queries `binStockBalance` across all bins instead of prioritizing `SHOP_FLOOR` (and excluding `DAMAGED_RETURNABLE` / `DAMAGED_SCRAP`).
-  3. It uses `Number(resolvedBatch.retailSellingPrice)` float math instead of `Decimal` arithmetic.
-- **Fix:**
-  - Filter `binStockBalance` to `bin: { binType: { in: ['SHOP_FLOOR', 'CONSIGNMENT'] } }` (never sell from `DAMAGED_RETURNABLE` or `DAMAGED_SCRAP`!).
-  - When `balances.length === 0` and negative stock is permitted (`ALLOW` or `WARN_PIN` verified), fallback to fetching the latest `InventoryBatch` for that `branchId` + `productId` (ordered by `createdAt: 'desc'`) so the POS can bill using the latest known MRP/Selling Price and record a negative balance in `SHOP_FLOOR`!
-  - Use `Decimal` for all clearance discount calculations (`effectivePrice = retailSellingPrice.sub(retailSellingPrice.mul(clearanceDiscountPct).div(100)).toDecimalPlaces(2)`).
-
-### 3. `[REMOD-201C]` Assigned to `DEV-4` — Fix 2-Up Sticker Layout & Regional Name in `ZplLabelGenerator`
-- **File:** `apps/hardware-bridge/src/zpl-label.ts`
-- **Issue:** `generateRepackStickerZpl()` sets `^PW800` (100mm wide 2-up roll) but only prints 1 sticker on the left (`X=20`), wasting the right-hand sticker (`X=420`), and omits `nameRegional`.
-- **Fix:** Support true 2-up pair printing (`leftSticker` at `X=20` and optional `rightSticker` at `X=420` on a 50x25mm 2-up roll) and print `nameRegional` alongside `nameEn`.
+### 2. `[REMOD-301B]` Assigned to `DEV-4` — Multi-Token & HSN/MRP Ranked Scoring in `AiInvoiceOcrService`
+- **File:** `apps/api/src/modules/ai-copilot/ai-invoice-ocr.service.ts`
+- **Issue:** Fuzzy matching currently queries `nameEn: { contains: keywords[0] }`, which matches the wrong item when a brand name is shared across dozens of SKUs (e.g., `"Aashirvaad"`).
+- **Fix:** Query candidate products matching ANY of the top tokens or `hsnCode`, then score each candidate in-memory:
+  - `+30 pts` per matching keyword token in `nameEn`
+  - `+25 pts` if `hsn.hsnCode === line.hsnCode`
+  - `+20 pts` if an existing batch has `mrp.equals(new Decimal(line.mrp))`
+  Select the highest-scoring candidate (only if `score >= 40`), returning `confidenceScore` alongside `matchType: 'NAME_HSN_SIMILARITY'`.
 
 ---
 
-## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 3 (`WO-301` TO `WO-305`)
+## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 4 (`WO-401` TO `WO-405`)
 
-Milestone 3 builds the entire **Procurement, Supplier Ledger, Auto-Reorder, Fast vs. 3-Way Match GRN, Multi-Layer Scheme Net Landing Cost Calculator, Red Margin Guardrail, Consignment Payouts, and BYOK AI Invoice OCR Engine**.
+Milestone 4 builds the heart of daily store operations: **Cashier Shift & Blind Close Z-Report, Automated Promotion & Upsell Engine, High-Speed POS Billing & Cross-Counter Hold/Recall, Sales Returns/Exchanges, and the Complete 5-Peripheral Hardware Bridge**.
 
-### [WO-301] Assigned to `DEV-1` (Supplier Master, Auto-Reorder Engine & 1-Click WhatsApp/PDF Purchase Order Generator)
-**Target Directory:** `apps/api/src/modules/procurement/suppliers/` & `apps/api/src/modules/procurement/reorder/`
+### [WO-401] Assigned to `DEV-1` (POS Terminal Locking, Cashier Shifts, Safe Drops, Blind Cash Declaration & POS Anti-Theft Exception Audit)
+**Target Directory:** `apps/api/src/modules/pos/shifts/`
 **Tasks:**
-1. **`SupplierService` & Controller (`/api/v1/procurement/suppliers`):**
-   - Full CRUD for `Supplier` (GSTIN validation, credit days e.g. 14/30 days, early-payment cash discount % & days, consignment vendor flag, WhatsApp phone number, bank/NEFT details, opening balance).
-   - Supplier Ledger & Payable Aging endpoint (`GET /api/v1/procurement/suppliers/:id/ledger`): Returns bill-by-bill outstanding payables, flagging bills due within 2 days and bills eligible for early-payment Cash Discount!
-2. **Smart Auto-Reorder & Velocity Engine (`GET /api/v1/procurement/reorder/suggestions?branchId=...`):**
-   - Evaluates all products in the branch using TWO algorithms (selectable by query/config):
-     - **Rule 1 (Min/Max Stock):** Current total stock (`SHOP_FLOOR` + `GODOWN`) $\le$ `minStock` $\rightarrow$ Suggest order qty = `maxStock - currentStock`.
-     - **Rule 2 (Sales Velocity):** Calculates average daily POS sales over the last $N$ days (`reorderVelocityDays`, e.g., 14 days). If `daysOfStockRemaining <= leadTimeDays`, suggests quantity needed for the next cycle.
-   - **Best Supplier Recommender:** For each suggested item, inspects historical `GrnLineItem` records to attach the top 2 suppliers who provided the **lowest `netLandingCost`** and best free-scheme history!
-3. **Purchase Order (PO) Lifecycle & WhatsApp Payload (`PurchaseOrderService`):**
-   - Create PO (`DRAFT` -> `APPROVED` -> `SENT_TO_VENDOR` -> `PARTIALLY_RECEIVED` -> `COMPLETED`) and generate a structured WhatsApp/PDF dispatch payload (`POST /api/v1/procurement/purchase-orders/:id/dispatch-whatsapp`).
+1. **Cashier Shift & Register Lifecycle (`PosShiftService` & Controller `/api/v1/pos/shifts`):**
+   - `POST /api/v1/pos/shifts/open`: Locks `PosTerminal` to the cashier (`userId`), records `openingFloat` (`Decimal(15,2)`), verifies no other active shift exists on that terminal.
+   - `POST /api/v1/pos/shifts/:id/safe-drop`: Records mid-day cash handovers from the counter drawer to the owner/manager safe (`midDaySafeDrops` increment + audit log).
+   - `GET /api/v1/pos/shifts/:id/x-report`: Mid-shift snapshot (only accessible if role permits or `blindCloseEnabled === false`).
+   - `POST /api/v1/pos/shifts/:id/blind-close`:
+     - Cashier submits physical currency denomination counts (`{ "500": 42, "200": 15, "100": 19, "50": 10, "20": 5, "10": 8, "coins": 45 }`).
+     - Backend computes `physicalCashTotal` from denominations using `Decimal`.
+     - Backend computes `expectedSystemCash`:
+       $$\text{Expected Cash} = \text{Opening Float} + \text{Total Cash Sales} - \text{Total Cash Refunds} - \text{Mid-Day Safe Drops}$$
+     - Computes `shortageOrExcessAmount = physicalCashTotal.sub(expectedSystemCash)`.
+     - If `shortageOrExcessAmount.lessThan(0)`, automatically records a **Cashier Shortage Debit** entry against the cashier's `StaffAdvanceAndGroceryKhata` so it links directly to their monthly payroll!
+     - Generates the complete **Z-Report payload** (Sales by Payment Mode, GST Slab Breakup, Void/Cancelled Bill Count, Net Profit Margin Summary, and Cash Variance).
+2. **POS Anti-Theft Supervisor Override & Exception Logger (`PosSecurityService`):**
+   - `POST /api/v1/pos/security/verify-override`: Validates a Supervisor's 4-digit PIN or encrypted ID badge barcode for sensitive actions (`LINE_ITEM_DELETE`, `BILL_VOID`, `MANUAL_PRICE_OVERRIDE`, `NO_SALE_DRAWER_OPEN`, `CASH_REFUND`, `NEGATIVE_STOCK_BILL`).
+   - Writes an immutable record to `AuditExceptionLog` and exposes `GET /api/v1/pos/security/exception-report?branchId=...&date=...`.
 
 ---
 
-### [WO-302] Assigned to `DEV-2` (Multi-Layer Scheme Net Landing Cost Engine, Fast Direct GRN vs. Enterprise 3-Way Match GRN & Margin Guardrail)
-**Target Directory:** `apps/api/src/modules/procurement/grn/`
+### [WO-402] Assigned to `DEV-2` (Automated Rule-Based Promotion, Mix & Match, Happy Hour & Live Cart-Slab Upsell Engine)
+**Target Directory:** `apps/api/src/modules/pos/promotions/`
 **Tasks:**
-1. **True Net Landing Cost & Margin Guardrail Calculator (`calculateGrnLineCosting`):**
-   - Must use strict `Decimal(15,4)` arithmetic to handle Indian FMCG distributor bills with all 5 layers of schemes and charges:
-     - Given: `billedQty`, `freeSchemeQty`, `grossPurchaseRate`, `tradeDiscountPct`, `tradeDiscountAmount`, `cashDiscountPct`, `gstRatePct`, `cessRatePct`, `apportionedFreightAndUnloading`.
-     - Step 1: $\text{Gross Line Value} = \text{billedQty} \times \text{grossPurchaseRate}$
-     - Step 2: Subtract Trade Discount (% and flat) and Cash Discount (%) to get $\text{Taxable Line Value}$.
-     - Step 3: Compute GST (`CGST + SGST` if supplier GSTIN state matches branch state, else `IGST`) + `Cess`.
-     - Step 4: Total Received Units = $\text{totalUnits} = (\text{billedQty} + \text{freeSchemeQty}) \times \text{uomConversionFactor}$.
-     - Step 5: Compute `netLandingCostPerBaseUnit`:
-       - If tenant GST Regime is `REGULAR` (ITC eligible):
-         $$\text{Net Landing Cost (Excl. ITC GST)} = \frac{\text{Taxable Line Value} + \text{Apportioned Freight}}{\text{totalUnits}}$$
-       - If tenant GST Regime is `COMPOSITION` (or non-creditable): include GST in the numerator!
-   - **Smart Margin Guardrail Check:**
-     - Compare `newNetLandingCost` against `previousBatch.netLandingCost` and current `retailSellingPrice`:
-       $$\text{Actual Margin \%} = \frac{\text{retailSellingPrice} - \text{newNetLandingCost}}{\text{retailSellingPrice}} \times 100$$
-     - If `Actual Margin % < targetMarginPct` (or `newNetLandingCost > previousNetLandingCost`), set `marginGuardrailTriggered: true`, `alertColor: 'RED'`, and compute `suggestedRetailSellingPrice`!
-2. **Dual-Mode GRN Engine (`GrnService`):**
-   - **Mode A: Fast Direct Purchase Bill (`POST /api/v1/procurement/grn/fast-direct`):** Single-step atomic `$transaction` that creates the GRN, creates/updates `InventoryBatch` (updating `retailSellingPrice` if overridden by owner during GRN), increments `BinStockBalance` (in `GODOWN` or `SHOP_FLOOR`), writes `StockLedger`, and returns barcode sticker print counts.
-   - **Mode B: Enterprise 3-Way Match (`POST /api/v1/procurement/grn/gate-entry` -> `blind-count` -> `three-way-match`):**
-     - Storekeeper enters `BlindGRN` quantities without seeing PO prices.
-     - Accounts enters Supplier Invoice -> System compares **PO Rate/Qty vs. Blind GRN Qty vs. Supplier Invoice Rate/Qty**, automatically flagging `RATE_VARIANCE` or `SHORT_SUPPLY` discrepancies requiring Manager approval!
+1. **`PromotionEngineService` (`/api/v1/pos/promotions`):**
+   - CRUD for `PromotionRule` (`BOGO`, `MIX_AND_MATCH`, `CART_SLAB_UPSELL`, `HAPPY_HOUR`, `COUPON_CODE`).
+   - **`evaluateCartPromotions(dto: EvaluateCartDto)` (`POST /api/v1/pos/promotions/evaluate-cart`):**
+     - Takes current cart lines, customer tier (`SILVER`, `GOLD`, `VIP`), price tier (`WALK_IN_RETAIL` vs `WHOLESALE_B2B`), timestamp, and optional `couponCode`.
+     - Evaluates all active rules for the branch using `Decimal(15,2)`:
+       1. **`BOGO` & Quantity Deals:** E.g., Buy 1 Get 1 Free, Buy 2 Get 1 at 50% Off on matching SKUs/batches.
+       2. **`MIX_AND_MATCH`:** E.g., Buy any 3 items from a Category/Brand group -> discount the cheapest item automatically.
+       3. **`HAPPY_HOUR`:** Checks current day-of-week and `HH:mm` window (e.g., 16:00–20:00 Veggie Market 20% off) and applies time-bound price drop.
+       4. **`CART_SLAB_UPSELL` (With Live Upsell Nudge!):**
+          - If Cart Subtotal qualifies for a slab (e.g., `>= ₹2,000` -> Get 1kg Sugar @ ₹9 or Flat ₹150 off), applies the reward.
+          - **Crucial Upsell Nudge:** If Cart Subtotal is within `80%–99.9%` of a slab threshold (e.g., Cart is `₹1,850` and threshold is `₹2,000`), returns `upsellNudges: [{ amountNeeded: 150.00, message: "Add ₹150.00 more to get 1kg Sugar @ ₹9!" }]` so the POS Cashier & Customer Dual Display show a live banner!
 
 ---
 
-### [WO-303] Assigned to `DEV-3` (Purchase Returns / GST Debit Notes, Damaged Bin Replacement & Consignment Pay-On-Sale Engine)
-**Target Directory:** `apps/api/src/modules/procurement/returns-consignment/`
+### [WO-403] Assigned to `DEV-3` (High-Speed POS Billing Engine, MRP Tax Back-Calculation, Cross-Counter LAN Hold/Recall, Split Tenders & Sales Returns/Exchanges)
+**Target Directory:** `apps/api/src/modules/pos/billing/`
 **Tasks:**
-1. **Purchase Return & GST Debit Note Engine (`PurchaseReturnService`):**
-   - `GET /api/v1/procurement/returns/returnable-damages?branchId=...&supplierId=...`: Automatically queries `BinStockBalance` in `DAMAGED_RETURNABLE` and expired batches mapped to that supplier so the owner never forgets to claim money back for expired/damaged goods!
-   - `POST /api/v1/procurement/returns/debit-note`: Atomically deducts stock from `DAMAGED_RETURNABLE` (or `GODOWN`), reverses proportionate GST (`CGST/SGST/IGST`), creates `PurchaseReturnDebitNote`, and supports two settlement modes:
-     - `DEDUCT_FROM_NEXT_PAYMENT` (reduces supplier payable balance)
-     - `FREE_REPLACEMENT_TRACKER` (tracks pending physical replacement units owed by the distributor).
-2. **Consignment / Vendor-Managed Inventory Payout Engine (`ConsignmentService`):**
-   - For items/batches where `isConsignment: true`:
-   - `GET /api/v1/procurement/consignment/settlement-preview?supplierId=...&from=...&to=...`:
-     - Queries actual POS sales (`PosInvoiceLine` minus `SalesReturn`) for that vendor's consignment batches during the period.
-     - Computes: $\text{Vendor Payout} = \text{Total Consignment Sales Value} - \text{Store Commission \% (or agreed Net Landing Cost of sold units only)}$.
-   - `POST /api/v1/procurement/consignment/settle`: Generates `ConsignmentSettlement` voucher and marks sold units as settled with the vendor.
+1. **Cross-Counter LAN Hold & Recall (`PosParkedBillService`):**
+   - `POST /api/v1/pos/billing/park`: Parks an in-progress cart (`PosParkedBill`) with terminal ID, customer phone, and cashier note so any counter on the LAN can view and resume it via `GET /api/v1/pos/billing/parked?branchId=...` and `POST /api/v1/pos/billing/parked/:id/recall`.
+2. **Atomic POS Checkout & Invoice Engine (`POST /api/v1/pos/billing/checkout`):**
+   - Runs inside a strict Prisma `$transaction`:
+     - Supports `WALK_IN_RETAIL`, `WHOLESALE_B2B`, `HOME_DELIVERY`, and `MPOS_QUEUE_TOKEN`.
+     - **Dynamic Combo (`COMBO_KIT`) Handling:** If a cart item is a `DYNAMIC_POS` combo, automatically deducts the underlying child `ComboBomItem` quantities from `SHOP_FLOOR` stock while billing the combo parent price!
+     - **GST Regime & Inclusive MRP Tax Back-Calculation:**
+       - Checks `Tenant.gstRegime` (`REGULAR` vs `COMPOSITION`).
+       - If `COMPOSITION`: sets `cgstAmount = 0`, `sgstAmount = 0`, `igstAmount = 0`, `cessAmount = 0` (`Bill of Supply` mode).
+       - If `REGULAR`: for GST-inclusive retail prices, back-calculates exact taxable value using `Decimal`:
+         $$\text{Taxable Value} = \frac{\text{Net Line Total (After Promo/Discount)}}{1 + \frac{\text{GST Rate \%} + \text{Cess Rate \%}}{100}}$$
+         Splits GST into `CGST + SGST` (intra-state) or `IGST` (inter-state B2B) + `Cess`, and aggregates the **HSN-wise Tax Summary table** required on Indian supermarket receipts!
+     - **Live Gross Profit Snapshot:** Stores `netLandingCostSnapshot` on every `PosInvoiceLine` so the owner's dashboard knows the exact real-time profit on every bill.
+     - **Multi-Mode Split Payment Validator (`PosPaymentSplit`):**
+       - Validates that the sum of splits (`CASH`, `UPI`, `CARD`, `SODEXO`, `CREDIT_NOTE_SLIP`, `LOYALTY_POINTS`, `CUSTOMER_KHATA`, `GIFT_CARD`) equals `netPayable` (or if `CASH` tendered > due, computes exact `changeReturned`).
+       - If `CREDIT_NOTE_SLIP` is used, verifies the slip barcode is unredeemed and marks it redeemed.
+     - Deducts stock from `BinStockBalance` (`SHOP_FLOOR`), writes `StockLedger` (`OUTWARD_POS_SALE`), and returns the full invoice + ESC/POS thermal receipt payload.
+3. **Sales Return, Instant Counter Exchange & Barcoded Credit Note Slip (`PosReturnService`):**
+   - `GET /api/v1/pos/billing/invoice-by-number/:invoiceNo`: Scans original bill barcode and loads original lines with actual net price paid after discounts/BOGO (preventing return fraud).
+   - `POST /api/v1/pos/billing/returns`:
+     - Restores returned quantity to `SHOP_FLOOR` (if resellable) or `DAMAGED_RETURNABLE` (if defective), reverses proportionate GST, and processes one of the 3 owner-configured refund modes:
+       1. `INSTANT_EXCHANGE` (applies return credit directly against replacement items on the same screen)
+       2. `CREDIT_NOTE_SLIP` (generates a barcoded `CreditNoteSlip` valid for $X$ days)
+       3. `CASH_OR_UPI_REFUND` (verifies Supervisor PIN override token).
 
 ---
 
-### [WO-304] Assigned to `DEV-4` (BYOK AI Purchase Bill OCR & CSV/Excel Smart Invoice Importer)
-**Target Directory:** `apps/api/src/modules/ai-copilot/`
+### [WO-404] Assigned to `DEV-4` (Complete 5-Peripheral Hardware Bridge: Bilingual ESC/POS Thermal Receipt Designer, Cash Drawer Kick, Live Serial Scale, Dual Display & EDC/Soundbox Webhooks)
+**Target Directory:** `apps/hardware-bridge/src/`
 **Tasks:**
-1. **Modular BYOK AI Provider Service (`AiProviderService`):**
-   - Reads the tenant's configured AI provider (`GEMINI`, `OPENAI`, `ANTHROPIC`) and API key from `Tenant` / `StoreConfig` (or environment fallback for testing).
-   - Implements a unified structured-JSON vision/text extraction adapter (`extractStructuredJson<T>(prompt, imageOrPdfBase64, schema)`).
-2. **AI Distributor GST Invoice OCR (`POST /api/v1/ai-copilot/ocr-purchase-invoice`):**
-   - Accepts a photo/PDF base64 or structured text/CSV of a distributor's GST bill.
-   - Extracts: `supplierName`, `supplierGstin`, `invoiceNumber`, `invoiceDate`, and line items (`rawItemName`, `hsnCode`, `batchNumber`, `expiryDate`, `mrp`, `billedQty`, `freeQty`, `grossRate`, `tradeDiscountPct`, `gstRatePct`).
-   - **Smart SKU Fuzzy Matcher:** Automatically matches each extracted line item against the store's `Product` catalog (by Barcode, HSN + Name similarity, or previous supplier `GrnLineItem` mapping) and runs `calculateGrnLineCosting()` so the frontend receives a ready-to-save GRN preview with Margin Guardrail alerts pre-computed!
+Upgrade `apps/hardware-bridge` to support all 5 locked-in supermarket peripherals with zero placeholders:
+1. **`escpos.ts` (80mm & 58mm Bilingual Thermal Receipt Generator + RJ11 Cash Drawer Kick):**
+   - Generates structured ESC/POS byte commands + plain-text/HTML preview for **80mm (48 cols)** and **58mm (32 cols)** thermal printers.
+   - Prints: Store Header, GSTIN, Bill No/Date/Counter/Cashier, Bilingual Item Rows (`nameEn` + `nameRegional` when enabled in `StoreConfig`), `MRP | Rate | Qty | Amt`, **Total Savings Banner (`YOU SAVED ₹X TODAY!`)**, **HSN-wise GST Breakup Table (`HSN | Taxable | CGST | SGST | Total Tax`)**, Split Payment Summary, Dynamic UPI QR / Return Barcode, and RJ11 Cash Drawer Kick pulse (`\x1B\x70\x00\x19\xFA`).
+2. **`serial-scale.ts` (Live RS232/USB Weighing Scale Stream + Prefix Generator):**
+   - Parses continuous ASCII weight frames from standard Indian retail scales (Essae / Sansui / Avery format e.g. `ST,GS,+001.250kg`) and emits stable weight readings over local HTTP/WebSocket to the POS screen.
+3. **`edc-payment-terminal.ts` (Pine Labs / Paytm / PhonePe / Razorpay POS Terminal & Soundbox Adapter):**
+   - Implements unified payment request dispatch (`initiateTerminalPayment(amount, invoiceNo, mode: 'CARD' | 'DYNAMIC_UPI_QR')`), status polling/webhook handler, and dynamic UPI URI builder (`upi://pay?pa=...&am=...&tr=...`) for the Customer Dual Display.
+4. **`index.ts` (Hardware Bridge Local Server):**
+   - Exposes clean local REST/event endpoints (`/print-receipt`, `/kick-drawer`, `/print-zpl`, `/scale/weight`, `/edc/initiate`) consumed by `apps/pos-web`.
 
 ---
 
-### [WO-305] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: Smart GRN Entry with Red Margin Guardrail, AI Invoice Upload, Auto-Reorder & Supplier Portal)
-**Target Directory:** `apps/pos-web/src/features/procurement/` & `apps/pos-web/src/App.tsx`
+### [WO-405] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: Ultra-Fast Keyboard POS Screen, Cross-Counter Hold/Recall, Split-Pay Modal, Customer Dual Display & Shift Blind Close UI)
+**Target Directory:** `apps/pos-web/src/features/pos/` & `apps/pos-web/src/App.tsx`
 **Tasks:**
-Build high-speed keyboard-driven procurement screens in `apps/pos-web` and wire them into the main navigation in `App.tsx`:
-1. **High-Speed GRN & Purchase Bill Screen (`GrnEntryPage.tsx`):**
-   - Toggle between **Fast Direct Bill Mode** and **3-Way Match PO Mode**.
-   - **"AI Scan Bill / Upload CSV" Button:** Opens modal to upload a distributor invoice -> auto-populates the GRN grid.
-   - **Live Costing & Red Margin Guardrail Grid:** Columns for `Item`, `UOM`, `Batch`, `Expiry`, `Billed Qty`, `Free Qty`, `Gross Rate`, `Trade Disc %`, `Cash Disc %`, `GST %`, `True Net Landing Cost (Auto)`, `Old Cost`, `MRP`, `Margin %`, and `Store Selling Price (Editable inline)`.
-   - Rows where `New Landing Cost > Old Cost` or `Margin % < Target Margin` automatically glow **RED** with a 1-click **"Apply Suggested Price"** button!
-2. **Smart Auto-Reorder & WhatsApp PO Screen (`AutoReorderAndPoPage.tsx`):**
-   - Shows low-stock and high-velocity items running out within 3 days, side-by-side supplier comparison (`Lowest Cost Supplier` vs. `Last Supplier`), and a 1-click **"Generate & Send PO on WhatsApp"** action.
-3. **Supplier Ledger, Debit Notes & Consignment Payout Screen (`SuppliersAndReturnsPage.tsx`):**
-   - Tabs for: (A) Supplier Payable Aging & Early-Pay Cash Discount alerts, (B) Damaged/Expired Stock -> 1-Click GST Debit Note creator, and (C) Consignment Vendor Sold-Stock Payout calculator.
+Build the flagship supermarket checkout experience inside `apps/pos-web`:
+1. **100% Keyboard-Driven + Touch POS Checkout Screen (`PosBillingScreen.tsx`):**
+   - **Live Global Function Key Listener:** Reads remappable shortcuts from `StoreConfig` (`F1` Help/PLU Search, `F2` Qty Change, `F3` Weight Read from Scale, `F4` Price Tier Toggle Retail/Wholesale, `F6` Hold/Park Bill, `F7` Recall Held Bill across LAN Counters, `F8` Sales Return/Exchange Modal, `F9` Supervisor PIN Override, `F10` Instant Cash Checkout, `F12` Split Payment Modal).
+   - **Batch/MRP Conflict Popup:** When `resolveBatchForPosSale` returns `requiresBatchPopup: true`, displays a lightning-fast numbered modal (`Press 1 for MRP ₹240 | Press 2 for MRP ₹255`).
+   - **Fast-Moving Loose Items Touch Grid & 3-Digit PLU Bar:** Right-side touch panel for vegetables, fruits, milk, and loose staples.
+   - **Live Promotion & Cart-Slab Upsell Banner:** Highlights applied BOGO/Mix-and-Match savings and flashes the amber upsell nudge (*"Add ₹150 more to get 1kg Sugar @ ₹9!"*).
+   - **Multi-Mode Split Tender Modal:** Lets cashier combine Cash + UPI + Card + Sodexo + Credit Note Slip + Loyalty Points + Customer Khata on one bill, showing live `Balance Remaining` and `Cash Change to Return`.
+2. **Customer-Facing Secondary Display View (`CustomerDualDisplayPage.tsx`):**
+   - Clean second-monitor view showing live scanned items, item MRP vs. Store Price, a giant green **"TOTAL SAVED: ₹X"** counter, Upsell nudge banner, and **Dynamic UPI QR Code** during payment.
+3. **Cashier Shift Open, Safe Drop & Blind Cash Denomination Close Screen (`ShiftAndZReportPage.tsx`):**
+   - Interactive currency note calculator (`₹500 x ___`, `₹200 x ___`, `₹100 x ___`, etc.) -> Submits Blind Close -> Displays printable Z-Report & Cashier Exception Log.
 
 ---
 
 ## SECTION D: MANDATORY SELF-CONTAINED RETURN REPORT (`agy-cli/WO_TO_HO_REPORT.md`)
 
-When `REMOD-201` (`A`, `B`, `C`) and `WO-301` through `WO-305` are complete, write the plain-text report to `agy-cli/WO_TO_HO_REPORT.md` containing:
+When `REMOD-301` (`A`, `B`) and `WO-401` through `WO-405` are complete, write the plain-text report to `agy-cli/WO_TO_HO_REPORT.md` containing:
 1. **Executive Summary & Git Commit SHA** (confirming push to `main`).
-2. **`REMOD-201` Verification Snippets:**
-   - Paste the updated code blocks for `CatalogService.lookup()` (showing `productUomConversion` barcode lookup), `InventoryBatchService.resolveBatchForPosSale()` (showing zero-stock `ALLOW` fallback without crashing + `SHOP_FLOOR` filter + `Decimal` math), and `ZplLabelGenerator.generateRepackStickerZpl()` (showing 2-up `X=20` and `X=420` side-by-side stickers).
-3. **Work Order Completion Matrix (`WO-301` to `WO-305`):**
-   - Exact file paths, controllers, services, and UI components created.
-4. **Core Milestone 3 Algorithm Snippets Embedded in Report:**
-   - Paste the exact implementation of `GrnService.calculateGrnLineCosting()` (showing multi-layer Free Qty + Trade/Cash Discount + Freight apportionment + Margin Guardrail red flag).
-   - Paste the exact implementation of `GrnService.createFastDirectGrn()` and 3-Way Match variance detection.
-   - Paste the core implementation of `AiProviderService` / `ocrPurchaseInvoice()`.
+2. **`REMOD-301` Verification Snippets:**
+   - Paste the updated weighted-average batch landing cost calculation in `GrnService.createFastDirectGrn()` and the multi-token + HSN/MRP scored matcher in `AiInvoiceOcrService`.
+3. **Work Order Completion Matrix (`WO-401` to `WO-405`):**
+   - Exact file paths, controllers, services, and React UI screens created.
+4. **Core Milestone 4 Algorithm Snippets Embedded in Report:**
+   - Paste `PosShiftService.blindCloseShift()` (showing denomination total, expected cash formula, and automatic shortage posting to staff ledger).
+   - Paste `PromotionEngineService.evaluateCartPromotions()` (showing BOGO, Mix & Match, and Cart-Slab Upsell nudge calculation).
+   - Paste `PosBillingService.checkout()` (showing Dynamic Combo BOM deduction, GST-inclusive MRP tax back-calculation, HSN summary aggregation, and Split Payment validation).
+   - Paste `escpos.ts` receipt builder (showing Bilingual line items, You Saved banner, HSN GST table, and drawer kick command).
 5. **Exact Build & Typecheck Terminal Output:**
    - `pnpm --filter @ti-erp/database prisma validate`
    - `pnpm -r typecheck` (must show 0 errors across all 6 packages)

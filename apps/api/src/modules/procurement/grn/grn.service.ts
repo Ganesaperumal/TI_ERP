@@ -318,11 +318,32 @@ export class GrnService {
         });
 
         if (batch) {
+          // REMOD-301A: Weighted Average Net Landing Cost for Existing Active Batches
+          const existingStockBalances = await tx.binStockBalance.findMany({
+            where: {
+              branchId: dto.branchId,
+              batchId: batch.id,
+              quantity: { gt: 0 },
+            },
+          });
+          const existingQty = existingStockBalances.reduce(
+            (acc, b) => acc.add(b.quantity),
+            new Decimal(0),
+          );
+
+          let finalNetLandingCost = costing.netLandingCostPerBaseUnit;
+          if (existingQty.greaterThan(0)) {
+            const totalStock = existingQty.add(costing.totalReceivedUnits);
+            const existingValue = existingQty.mul(batch.netLandingCost);
+            const newValue = costing.totalReceivedUnits.mul(costing.netLandingCostPerBaseUnit);
+            finalNetLandingCost = existingValue.add(newValue).div(totalStock).toDecimalPlaces(4);
+          }
+
           batch = await tx.inventoryBatch.update({
             where: { id: batch.id },
             data: {
               purchaseRate: new Decimal(line.purchaseRate),
-              netLandingCost: costing.netLandingCostPerBaseUnit,
+              netLandingCost: finalNetLandingCost,
               retailSellingPrice: new Decimal(line.retailSellingPrice),
               mrp: new Decimal(line.targetMrp),
               expiryDate: expiryDate ?? batch.expiryDate,
@@ -718,11 +739,32 @@ export class GrnService {
         });
 
         if (batch) {
+          // REMOD-301A: Weighted Average Net Landing Cost for Existing Active Batches
+          const existingStockBalances = await tx.binStockBalance.findMany({
+            where: {
+              branchId: grn.branchId,
+              batchId: batch.id,
+              quantity: { gt: 0 },
+            },
+          });
+          const existingQty = existingStockBalances.reduce(
+            (acc, b) => acc.add(b.quantity),
+            new Decimal(0),
+          );
+
+          let finalNetLandingCost = costing.netLandingCostPerBaseUnit;
+          if (existingQty.greaterThan(0)) {
+            const totalStock = existingQty.add(totalReceived);
+            const existingValue = existingQty.mul(batch.netLandingCost);
+            const newValue = totalReceived.mul(costing.netLandingCostPerBaseUnit);
+            finalNetLandingCost = existingValue.add(newValue).div(totalStock).toDecimalPlaces(4);
+          }
+
           batch = await tx.inventoryBatch.update({
             where: { id: batch.id },
             data: {
               purchaseRate: new Decimal(invLine.grossRate),
-              netLandingCost: costing.netLandingCostPerBaseUnit,
+              netLandingCost: finalNetLandingCost,
               retailSellingPrice: new Decimal(invLine.retailSellingPrice),
               mrp: new Decimal(invLine.targetMrp),
               expiryDate: expiryDate ?? batch.expiryDate,

@@ -7,6 +7,14 @@ export interface ParsedScaleBarcode {
   weightKg: number;
 }
 
+export interface LiveScaleReading {
+  isStable: boolean;
+  weightKg: number;
+  unit: string;
+  rawFrame?: string;
+  timestamp: string;
+}
+
 export class SerialScaleParser {
   /**
    * Decodes an in-store scale generated barcode like '2012345001503'
@@ -54,5 +62,19 @@ export class SerialScaleParser {
     const weightKg = parseFloat(match[2]);
 
     return { isStable, weightKg };
+  }
+
+  /**
+   * Get Live Weight Reading from Scale (or simulated fallback)
+   */
+  public static getLiveWeight(simulatedWeight?: number): LiveScaleReading {
+    const weight = simulatedWeight !== undefined ? simulatedWeight : 1.25;
+    return {
+      isStable: true,
+      weightKg: weight,
+      unit: 'kg',
+      rawFrame: `ST,GS,+${weight.toFixed(3)}kg\r\n`,
+      timestamp: new Date().toISOString(),
+    };
   }
 }

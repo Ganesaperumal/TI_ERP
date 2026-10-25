@@ -47,6 +47,7 @@ export interface SmartMatchedLinePreview {
     baseUom: string;
   } | null;
   matchType: 'EXACT_BARCODE' | 'SKU_CODE' | 'NAME_HSN_SIMILARITY' | 'UNMATCHED';
+  confidenceScore?: number;
   costing: {
     taxableAmount: number;
     cgstAmount: number;
@@ -176,6 +177,7 @@ Respond ONLY with a valid JSON object matching this schema.`;
       // Smart SKU Matching
       let matchedProd = null;
       let matchType: 'EXACT_BARCODE' | 'SKU_CODE' | 'NAME_HSN_SIMILARITY' | 'UNMATCHED' = 'UNMATCHED';
+      let confidenceScore = 0;
 
       if (line.barcode) {
         const barcodeRec = await this.prisma.productBarcode.findFirst({
@@ -185,6 +187,7 @@ Respond ONLY with a valid JSON object matching this schema.`;
         if (barcodeRec) {
           matchedProd = barcodeRec.product;
           matchType = 'EXACT_BARCODE';
+          confidenceScore = 100;
         }
       }
 
@@ -196,22 +199,81 @@ Respond ONLY with a valid JSON object matching this schema.`;
         if (uomRec) {
           matchedProd = uomRec.product;
           matchType = 'EXACT_BARCODE';
+          confidenceScore = 100;
         }
       }
 
-      // Name similarity fallback
+      // REMOD-301B: Multi-Token & HSN/MRP Ranked Scoring
       if (!matchedProd && line.rawItemName) {
-        const keywords = line.rawItemName.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter((k) => k.length > 2);
+        const keywords = line.rawItemName
+          .replace(/[^a-zA-Z0-9\s]/g, '')
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((k) => k.length > 2);
+
         if (keywords.length > 0) {
-          matchedProd = await this.prisma.product.findFirst({
+          // Query candidate products matching ANY of the top tokens or HSN code
+          const candidates = await this.prisma.product.findMany({
             where: {
               tenantId,
-              nameEn: { contains: keywords[0], mode: 'insensitive' },
+              isActive: true,
+              OR: [
+                ...keywords.slice(0, 3).map((kw) => ({
+                  nameEn: { contains: kw, mode: 'insensitive' as const },
+                })),
+                ...(line.hsnCode
+                  ? [{ hsn: { hsnCode: line.hsnCode } }]
+                  : []),
+              ],
             },
-            include: { hsn: true },
+            include: {
+              hsn: true,
+              batches: {
+                take: 5,
+                orderBy: { createdAt: 'desc' },
+              },
+            },
+            take: 20,
           });
-          if (matchedProd) {
+
+          // In-memory multi-attribute scoring
+          let bestCandidate = null;
+          let highestScore = 0;
+          const targetMrpDec = new Decimal(line.mrp);
+
+          for (const cand of candidates) {
+            let score = 0;
+            const candNameLower = cand.nameEn.toLowerCase();
+
+            // +30 pts per matching keyword token
+            for (const kw of keywords) {
+              if (candNameLower.includes(kw)) {
+                score += 30;
+              }
+            }
+
+            // +25 pts if HSN code matches
+            if (line.hsnCode && cand.hsn && cand.hsn.hsnCode === line.hsnCode) {
+              score += 25;
+            }
+
+            // +20 pts if an existing batch has matching MRP
+            const mrpMatches = cand.batches.some((b) => b.mrp.equals(targetMrpDec));
+            if (mrpMatches) {
+              score += 20;
+            }
+
+            if (score > highestScore) {
+              highestScore = score;
+              bestCandidate = cand;
+            }
+          }
+
+          // Select candidate only if score meets confidence threshold (score >= 40)
+          if (bestCandidate && highestScore >= 40) {
+            matchedProd = bestCandidate;
             matchType = 'NAME_HSN_SIMILARITY';
+            confidenceScore = Math.min(100, highestScore);
           }
         }
       }
@@ -277,6 +339,7 @@ Respond ONLY with a valid JSON object matching this schema.`;
             }
           : null,
         matchType,
+        confidenceScore,
         costing: {
           taxableAmount: Number(costing.taxableAmount),
           cgstAmount: Number(costing.cgstAmount),

@@ -8,6 +8,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { StockOpsModule } from './modules/stock-ops/stock-ops.module';
 import { ProcurementModule } from './modules/procurement/procurement.module';
 import { AiCopilotModule } from './modules/ai-copilot/ai-copilot.module';
+import { PosModule } from './modules/pos/pos.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AiCopilotModule } from './modules/ai-copilot/ai-copilot.module';
     StockOpsModule,
     ProcurementModule,
     AiCopilotModule,
+    PosModule,
   ],
   controllers: [AppController],
   providers: [AppService],

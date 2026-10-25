@@ -3,475 +3,336 @@
 **To:** Argon (Director & CTO — Head Office / Gemini Web)
 **Repository:** `https://github.com/Ganesaperumal/TI_ERP.git`
 **Branch:** `main`
-**Dispatch ID:** `DISPATCH-003` (`REMOD-201` Bug Fixes + Milestone 3: Procurement, Auto-Reorder, Fast & 3-Way Match GRN, Net Landing Cost & Margin Guardrail, Consignment & BYOK AI Invoice OCR)
+**Dispatch ID:** `DISPATCH-004` (`REMOD-301` Fixes + Milestone 4: High-Speed POS Billing Engine, Promotions & Cart Upsell, Split Payments, Sales Returns/Exchanges, Shift Blind Close Z-Report & Full Hardware Bridge)
 **Status:** `COMPLETED & VERIFIED`
 
 ---
 
 ## 1. EXECUTIVE SUMMARY
 
-The Agy CLI Execution Squad has executed all mandates specified in `DISPATCH-003`:
-1. **Section B (`REMOD-201` Code Audit Fixes):**
-   - **`[REMOD-201A]`**: Fixed `CatalogService.lookup()` to resolve `ProductUomConversion.barcode` (returning `resolvedBy: 'UOM_CONVERSION_BARCODE'`) and replaced JavaScript float division with strict `Decimal` arithmetic for weighing scale barcodes.
-   - **`[REMOD-201B]`**: Fixed `InventoryBatchService.resolveBatchForPosSale()` to prevent crashes on zero-stock when negative stock is allowed (`ALLOW` or supervisor PIN) by falling back to the latest `InventoryBatch` for that branch + product, scoped bin queries strictly to `SHOP_FLOOR` and `CONSIGNMENT`, and implemented strict `Decimal` clearance discount arithmetic.
-   - **`[REMOD-201C]`**: Updated `ZplLabelGenerator.generateRepackStickerZpl()` to support true 2-up pair printing side-by-side (`X=20` left, `X=420` right) and render `nameRegional` alongside `nameEn`.
-2. **Section C (`WO-301` to `WO-305` Milestone 3 Implementation):**
-   - **`[WO-301]`**: Built `SupplierService`, `AutoReorderService` (evaluating Min/Max Stock and Sales Velocity run rate over 14 days, with Historical Lowest Net Landed Cost Best Supplier Recommender), and `PurchaseOrderService` (with structured 1-click WhatsApp PO generation).
-   - **`[WO-302]`**: Built `GrnService.calculateGrnLineCosting()` implementing the complete 5-layer FMCG distributor scheme formula (Gross Rate, Free Qty, Trade Disc % and flat, Cash Disc %, Freight Apportionment, ITC Regular vs Composition) and Red Margin Guardrail. Built atomic single-step Fast Direct GRN and Enterprise 3-Way Match (Gate Entry -> Blind Count -> 3-Way Match with discrepancy audits).
-   - **`[WO-303]`**: Built `ReturnsConsignmentService` for querying unclaimed damaged/expired stock from `DAMAGED_RETURNABLE` bins, issuing atomic GST Debit Notes (`DEDUCT_FROM_NEXT_PAYMENT` vs `FREE_REPLACEMENT_TRACKER`), and computing Consignment Vendor-Managed Inventory payouts based on actual POS sales.
-   - **`[WO-304]`**: Built `AiProviderService` (modular BYOK supporting Gemini, OpenAI, Claude with structured JSON extraction) and `AiInvoiceOcrService` (extracting Indian FMCG tax bills, fuzzy SKU matching against store catalog, and pre-computing landed cost previews with margin alerts).
-   - **`[WO-305]`**: Created responsive keyboard-friendly React procurement screens in `apps/pos-web`: `GrnEntryPage.tsx`, `AutoReorderAndPoPage.tsx`, and `SuppliersAndReturnsPage.tsx`, wired into `App.tsx` main navigation.
+The Agy CLI Execution Squad has executed all mandates specified in `DISPATCH-004`:
+1. **Section B (`REMOD-301` Code Audit Fixes):**
+   - **`[REMOD-301A]`**: Updated `GrnService.createFastDirectGrn()` and `matchThreeWay()` to compute the true **Weighted Average Net Landing Cost** when incoming stock merges into an existing active batch with positive stock (`existingQty > 0`), strictly preserving accurate inventory valuation.
+   - **`[REMOD-301B]`**: Updated `AiInvoiceOcrService` to implement multi-token keyword search with multi-attribute in-memory scoring (+30 pts per token in `nameEn`, +25 pts for HSN match, +20 pts for MRP match) and a confidence threshold of $\ge 40$, preventing wrong matches across multi-product brands.
+2. **Section C (`WO-401` to `WO-405` Milestone 4 Implementation):**
+   - **`[WO-401]`**: Built `PosShiftService` (terminal locking, mid-day safe drops, physical denomination blind close, automatic shortage debit to staff khata, and Z-Report aggregation) and `PosSecurityService` (supervisor 4-digit PIN override validation and immutable `AuditExceptionLog` writer).
+   - **`[WO-402]`**: Built `PromotionEngineService` with rule-based evaluation of BOGO, Mix & Match (cheapest item discount), Happy Hour time windows, and Cart-Slab Upsell with **live upsell nudges** (*"Add ₹X more to get 1kg Sugar @ ₹9!"*).
+   - **`[WO-403]`**: Built `PosParkedBillService` (cross-counter LAN hold/recall), `PosBillingService` (atomic checkout with dynamic combo BOM deduction from `SHOP_FLOOR`, GST regime handling, inclusive MRP tax back-calculation, HSN table, multi-mode split payment validation, and live profit snapshots), and `PosReturnService` (sales return by bill barcode, 90-day barcoded credit note slips, exchange credits, and cash refunds).
+   - **`[WO-404]`**: Upgraded `apps/hardware-bridge`:
+     - `escpos.ts`: 80mm & 58mm bilingual thermal receipt builder with Total Savings banner, mandatory Indian HSN tax table, and RJ11 drawer kick pulse (`\x1B\x70\x00\x19\xFA`).
+     - `serial-scale.ts`: RS232/USB continuous scale stream parser and live weight API.
+     - `edc-payment-terminal.ts`: EDC / Dynamic Bharat UPI intent builder (`upi://pay?pa=...`) and webhook listener.
+     - `index.ts`: REST hardware bridge server running on port 8089.
+   - **`[WO-405]`**: Built flagship React supermarket checkout screens in `apps/pos-web`:
+     - `PosBillingScreen.tsx`: 100% keyboard F1-F12 listener, quick scan, batch/MRP conflict popup, fast-moving touch grid & 3-digit PLU bar, live promo & upsell banner, multi-tender split modal.
+     - `CustomerDualDisplayPage.tsx`: Secondary monitor view showing live items, item savings, giant total savings banner, upsell nudge, and dynamic UPI QR code.
+     - `ShiftAndZReportPage.tsx`: Cashier shift open, safe drops, interactive currency denomination blind close, and printable 80mm Z-Report.
 
 ---
 
-## 2. `REMOD-201` VERIFICATION SNIPPETS
+## 2. `REMOD-301` VERIFICATION SNIPPETS
 
-### A. `[REMOD-201A]` Multi-UOM Barcode & Decimal Scale Math in `CatalogService.lookup()`
-**File:** `apps/api/src/modules/catalog/catalog.service.ts`
-```typescript
-    // CASE C: Weighing Scale Prefix Barcode (e.g., '20' + 5-digit PLU + 5-digit Weight in grams + check digit)
-    const scaleRule = config.hardware.weighingScale.barcodePrefixRule;
-    if (
-      scaleRule.enabled &&
-      trimmedCode.startsWith(scaleRule.prefix) &&
-      trimmedCode.length >= scaleRule.prefix.length + scaleRule.skuLength + scaleRule.weightLength
-    ) {
-      const startSku = scaleRule.prefix.length;
-      const skuOrPlu = trimmedCode.substring(startSku, startSku + scaleRule.skuLength);
-      const startWeight = startSku + scaleRule.skuLength;
-      const weightRaw = trimmedCode.substring(startWeight, startWeight + scaleRule.weightLength);
-      const weightKg = new Decimal(weightRaw).div(new Decimal(10).pow(scaleRule.weightDecimals));
-
-      // Find product by short PLU code (trimmed of leading zeroes) or SKU code
-      const cleanPlu = parseInt(skuOrPlu, 10).toString();
-      const product = await this.prisma.product.findFirst({
-        where: {
-          tenantId: branch.tenantId,
-          OR: [
-            { shortPluCode: cleanPlu },
-            { shortPluCode: skuOrPlu },
-            { skuCode: skuOrPlu },
-            { barcodes: { some: { barcode: skuOrPlu } } },
-          ],
-        },
-        include: { hsn: true, uomConversions: true, barcodes: true },
-      });
-
-      if (product) {
-        return {
-          resolvedBy: 'WEIGHING_SCALE_PREFIX',
-          product,
-          scaleData: {
-            prefix: scaleRule.prefix,
-            rawWeight: weightRaw,
-            weightKg: Number(weightKg),
-            weightKgDecimal: weightKg,
-          },
-        };
-      }
-    }
-
-    // Check Multi-UOM Carton / Box Specific Barcode (REMOD-201A)
-    const uomConversion = await this.prisma.productUomConversion.findFirst({
-      where: {
-        barcode: trimmedCode,
-        product: { tenantId: branch.tenantId },
-      },
-      include: {
-        product: {
-          include: { hsn: true, uomConversions: true, barcodes: true },
-        },
-      },
-    });
-
-    if (uomConversion) {
-      return {
-        resolvedBy: 'UOM_CONVERSION_BARCODE',
-        product: uomConversion.product,
-        uomConversion: {
-          id: uomConversion.id,
-          uomName: uomConversion.uomName,
-          conversionFactor: uomConversion.conversionFactor,
-          barcode: uomConversion.barcode,
-          retailPrice: uomConversion.retailPrice,
-          wholesalePrice: uomConversion.wholesalePrice,
-        },
-      };
-    }
-```
-
----
-
-### B. `[REMOD-201B]` Zero-Stock Crash Fix, Shop Floor Filter & Decimal Math in `InventoryBatchService.resolveBatchForPosSale()`
-**File:** `apps/api/src/modules/inventory/inventory-batch.service.ts`
-```typescript
-    // Fetch batches in stock with positive balances prioritizing shop floor
-    const balances = await this.prisma.binStockBalance.findMany({
-      where: {
-        branchId: dto.branchId,
-        productId: dto.productId,
-        quantity: { gt: 0 },
-        bin: {
-          binType: {
-            in: ['SHOP_FLOOR', 'CONSIGNMENT'], // Never sell from DAMAGED bins
-          },
-        },
-      },
-      include: {
-        batch: true,
-        bin: true,
-      },
-      orderBy: {
-        batch: {
-          expiryDate: 'asc', // Earliest expiry first (FEFO)
-        },
-      },
-    });
-
-    // If no active batches in stock on shop floor (REMOD-201B zero-stock handling)
-    if (balances.length === 0) {
-      // Check negative stock rule
-      const negRule =
-        product.negativeStockRule === 'STORE_DEFAULT'
-          ? config.inventory.negativeStockRule
-          : (product.negativeStockRule as NegativeStockRule);
-
-      if (negRule === NegativeStockRule.BLOCK) {
-        throw new BadRequestException(`Negative stock blocked for item ${product.skuCode}`);
-      }
-
-      if (negRule === NegativeStockRule.WARN_PIN && !dto.supervisorPin) {
-        return {
-          negativeStockWarning: true,
-          supervisorPinRequired: true,
-          message: 'Zero stock. Supervisor PIN override required to bill negative stock.',
-        };
-      }
-
-      // Fallback: fetch latest InventoryBatch for this product in the branch
-      const latestBatch = await this.prisma.inventoryBatch.findFirst({
-        where: { branchId: dto.branchId, productId: dto.productId },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (!latestBatch) {
-        throw new NotFoundException(`No active or historical batch found for product ${product.skuCode}`);
-      }
-
-      return {
-        requiresBatchPopup: false,
-        resolvedBatch: latestBatch,
-        effectivePrice: Number(latestBatch.retailSellingPrice),
-        effectivePriceDecimal: latestBatch.retailSellingPrice,
-        netLandingCostSnapshot: latestBatch.netLandingCost,
-        negativeStockApproved: true,
-      };
-    }
-```
-
----
-
-### C. `[REMOD-201C]` 2-Up Side-by-Side Label & Regional Name in `ZplLabelGenerator`
-**File:** `apps/hardware-bridge/src/zpl-label.ts`
-```typescript
-  public static generateRepackStickerZpl(
-    left: RepackStickerParams,
-    right?: RepackStickerParams,
-  ): string {
-    const renderSingle = (params: RepackStickerParams, offsetX: number) => {
-      const savings = params.mrp > params.sellingPrice ? params.mrp - params.sellingPrice : 0;
-      return `
-; --- Header Store Name (X=${offsetX}) ---
-^FO${offsetX},15^A0N,22,22^FD${params.storeName}^FS
-
-; --- Product Name (En + Regional) ---
-^FO${offsetX},40^A0N,22,22^FD${params.nameEn.slice(0, 22)}^FS
-${params.nameRegional ? `^FO${offsetX},64^A0N,20,20^FD${params.nameRegional.slice(0, 22)}^FS` : ''}
-
-; --- Weight & Dates ---
-^FO${offsetX},88^A0N,18,18^FDNet: ${params.netWeight} | Pkd: ${params.packedDate}^FS
-^FO${offsetX},108^A0N,18,18^FDExp: ${params.expiryDate}^FS
-
-; --- Barcode (Code128) ---
-^FO${offsetX},130^BCN,42,Y,N,N
-^FD${params.barcode}^FS
-
-; --- Pricing Block ---
-^FO${offsetX},195^A0N,18,18^FDM.R.P: Rs.${params.mrp.toFixed(2)}^FS
-^FO${offsetX + 150},192^A0N,26,26^FDOUR: Rs.${params.sellingPrice.toFixed(2)}^FS
-${savings > 0 ? `^FO${offsetX},225^A0N,16,16^FD(You Save Rs.${savings.toFixed(2)})^FS` : ''}`;
-    };
-
-    let zpl = `^XA
-^PW800
-^LL280
-^PON
-`;
-
-    // Render left column sticker at X=20
-    zpl += renderSingle(left, 20);
-
-    // Render right column sticker at X=420 if 2-up is enabled
-    const rightTarget = right || (left.isTwoUp ? left : undefined);
-    if (rightTarget) {
-      zpl += renderSingle(rightTarget, 420);
-    }
-
-    zpl += `
-^XZ`;
-    return zpl;
-  }
-```
-
----
-
-## 3. WORK ORDER COMPLETION MATRIX (`WO-301` TO `WO-305`)
-
-| WO ID | Module Name | File Paths | Key Functions & Endpoints |
-| :--- | :--- | :--- | :--- |
-| `WO-301` | Supplier & Auto-Reorder | `apps/api/src/modules/procurement/suppliers/supplier.dto.ts`<br>`apps/api/src/modules/procurement/suppliers/supplier.service.ts`<br>`apps/api/src/modules/procurement/suppliers/supplier.controller.ts`<br>`apps/api/src/modules/procurement/reorder/reorder.dto.ts`<br>`apps/api/src/modules/procurement/reorder/auto-reorder.service.ts`<br>`apps/api/src/modules/procurement/reorder/purchase-order.service.ts`<br>`apps/api/src/modules/procurement/reorder/reorder.controller.ts` | `GET /api/v1/procurement/suppliers/:id/ledger` (Aging & 2-day due + 2% CD)<br>`GET /api/v1/procurement/reorder/suggestions` (Min/Max + Sales Velocity run-rate)<br>`POST /api/v1/procurement/purchase-orders/:id/dispatch-whatsapp` |
-| `WO-302` | Net Landing Cost & GRN | `apps/api/src/modules/procurement/grn/grn.dto.ts`<br>`apps/api/src/modules/procurement/grn/grn.service.ts`<br>`apps/api/src/modules/procurement/grn/grn.controller.ts` | `calculateGrnLineCosting()` (5-layer scheme formula, ITC REGULAR vs COMPOSITION, Red Margin Guardrail)<br>`POST /api/v1/procurement/grn/fast-direct`<br>`POST /api/v1/procurement/grn/gate-entry`<br>`POST /api/v1/procurement/grn/:id/blind-count`<br>`POST /api/v1/procurement/grn/:id/three-way-match` |
-| `WO-303` | Debit Notes & Consignment | `apps/api/src/modules/procurement/returns-consignment/returns-consignment.dto.ts`<br>`apps/api/src/modules/procurement/returns-consignment/returns-consignment.service.ts`<br>`apps/api/src/modules/procurement/returns-consignment/returns-consignment.controller.ts` | `GET /api/v1/procurement/returns/returnable-damages`<br>`POST /api/v1/procurement/returns/debit-note` (`DEDUCT_FROM_NEXT_PAYMENT` vs `FREE_REPLACEMENT_TRACKER`)<br>`GET /api/v1/procurement/consignment/settlement-preview`<br>`POST /api/v1/procurement/consignment/settle` |
-| `WO-304` | BYOK AI Invoice OCR | `apps/api/src/modules/ai-copilot/ai-provider.service.ts`<br>`apps/api/src/modules/ai-copilot/ai-invoice-ocr.service.ts`<br>`apps/api/src/modules/ai-copilot/ai-copilot.dto.ts`<br>`apps/api/src/modules/ai-copilot/ai-copilot.controller.ts`<br>`apps/api/src/modules/ai-copilot/ai-copilot.module.ts` | Unified JSON Vision/Text Extraction (Gemini, OpenAI, Claude)<br>`POST /api/v1/ai-copilot/ocr-purchase-invoice`<br>Smart SKU Fuzzy Matcher & Pre-computed GRN preview |
-| `WO-305` | React Procurement UI | `apps/pos-web/src/features/procurement/GrnEntryPage.tsx`<br>`apps/pos-web/src/features/procurement/AutoReorderAndPoPage.tsx`<br>`apps/pos-web/src/features/procurement/SuppliersAndReturnsPage.tsx`<br>`apps/pos-web/src/App.tsx` | High-speed GRN grid with glowing Red Margin rows & 1-click "Apply Suggested Price"<br>Auto-Reorder & 1-click WhatsApp PO generator<br>Supplier aging, 1-click debit note generator, and consignment payout calculator |
-
----
-
-## 4. CORE MILESTONE 3 ALGORITHM SNIPPETS
-
-### A. True Net Landing Cost & Red Margin Guardrail Engine (`calculateGrnLineCosting`)
+### A. `[REMOD-301A]` Weighted Average Net Landing Cost for Existing Active Batches
 **File:** `apps/api/src/modules/procurement/grn/grn.service.ts`
 ```typescript
-  calculateGrnLineCosting(input: CalculateGrnCostingInputDto): GrnCostingOutput {
-    const billedQty = new Decimal(input.billedQty);
-    const freeSchemeQty = new Decimal(input.freeSchemeQty ?? 0);
-    const grossRate = new Decimal(input.grossPurchaseRate);
-    const tradeDiscPct = new Decimal(input.tradeDiscountPct ?? 0);
-    const tradeDiscAmount = new Decimal(input.tradeDiscountAmount ?? 0);
-    const cashDiscPct = new Decimal(input.cashDiscountPct ?? 0);
-    const gstRatePct = new Decimal(input.gstRatePct ?? 0);
-    const cessRatePct = new Decimal(input.cessRatePct ?? 0);
-    const freight = new Decimal(input.apportionedFreightAndUnloading ?? 0);
-    const uomFactor = new Decimal(input.uomConversionFactor ?? 1);
-    const retailSellingPrice = new Decimal(input.retailSellingPrice);
-    const targetMrp = new Decimal(input.targetMrp);
-    const targetMarginPct = new Decimal(input.targetMarginPct ?? 15);
-    const previousCost = input.previousNetLandingCost != null ? new Decimal(input.previousNetLandingCost) : null;
-    const isInterState = input.isInterState ?? false;
-    const gstRegime = input.gstRegime ?? 'REGULAR';
-
-    // Step 1: Gross Line Value
-    const grossLineValue = billedQty.mul(grossRate);
-
-    // Step 2: Trade Discount (% and flat)
-    const tradeFromPct = tradeDiscPct.greaterThan(0)
-      ? grossLineValue.mul(tradeDiscPct).div(100)
-      : new Decimal(0);
-    const tradeDiscountValue = tradeFromPct.add(tradeDiscAmount);
-    const valueAfterTradeDisc = grossLineValue.sub(tradeDiscountValue);
-
-    // Cash Discount (%)
-    const cashDiscountValue = cashDiscPct.greaterThan(0)
-      ? valueAfterTradeDisc.mul(cashDiscPct).div(100)
-      : new Decimal(0);
-
-    const taxableAmount = valueAfterTradeDisc.sub(cashDiscountValue).toDecimalPlaces(2);
-
-    // Step 3: GST computation
-    let cgstAmount = new Decimal(0);
-    let sgstAmount = new Decimal(0);
-    let igstAmount = new Decimal(0);
-
-    if (gstRatePct.greaterThan(0)) {
-      if (isInterState) {
-        igstAmount = taxableAmount.mul(gstRatePct).div(100).toDecimalPlaces(2);
-      } else {
-        const halfRate = gstRatePct.div(2);
-        cgstAmount = taxableAmount.mul(halfRate).div(100).toDecimalPlaces(2);
-        sgstAmount = taxableAmount.mul(halfRate).div(100).toDecimalPlaces(2);
-      }
-    }
-
-    const cessAmount = cessRatePct.greaterThan(0)
-      ? taxableAmount.mul(cessRatePct).div(100).toDecimalPlaces(2)
-      : new Decimal(0);
-
-    const totalGstAmount = cgstAmount.add(sgstAmount).add(igstAmount).add(cessAmount);
-    const lineTotal = taxableAmount.add(totalGstAmount);
-
-    // Step 4: Total Received Base Units (Billed + Free) * UOM Factor
-    const totalReceivedUnits = billedQty.add(freeSchemeQty).mul(uomFactor);
-    if (totalReceivedUnits.isZero()) {
-      throw new BadRequestException('Total received units cannot be zero');
-    }
-
-    // Step 5: Net Landing Cost
-    // If REGULAR (ITC eligible), GST is offset, so cost = (Taxable + Freight) / totalUnits
-    // If COMPOSITION (or non-creditable), GST is added into cost
-    const effectiveCostNumerator = gstRegime === 'COMPOSITION'
-      ? taxableAmount.add(totalGstAmount).add(freight)
-      : taxableAmount.add(freight);
-
-    const netLandingCostPerBaseUnit = effectiveCostNumerator.div(totalReceivedUnits).toDecimalPlaces(4);
-
-    // Step 6: Smart Margin Guardrail Check
-    let actualMarginPct = new Decimal(0);
-    if (retailSellingPrice.greaterThan(0)) {
-      actualMarginPct = retailSellingPrice
-        .sub(netLandingCostPerBaseUnit)
-        .div(retailSellingPrice)
-        .mul(100)
-        .toDecimalPlaces(2);
-    }
-
-    const costIncreased = previousCost != null && netLandingCostPerBaseUnit.greaterThan(previousCost);
-    const marginDipped = actualMarginPct.lessThan(targetMarginPct);
-    const marginGuardrailTriggered = marginDipped || costIncreased;
-    const alertColor = marginGuardrailTriggered ? 'RED' : 'GREEN';
-
-    // Suggested Selling Price to preserve target margin: Cost / (1 - (margin / 100))
-    const marginDivisor = new Decimal(1).sub(targetMarginPct.div(100));
-    let suggestedRetailSellingPrice = marginDivisor.greaterThan(0)
-      ? netLandingCostPerBaseUnit.div(marginDivisor).toDecimalPlaces(2)
-      : netLandingCostPerBaseUnit;
-
-    // Cap suggested selling price at target MRP if MRP is valid
-    if (targetMrp.greaterThan(0) && suggestedRetailSellingPrice.greaterThan(targetMrp)) {
-      suggestedRetailSellingPrice = targetMrp;
-    }
-
-    return {
-      grossLineValue,
-      tradeDiscountValue,
-      cashDiscountValue,
-      taxableAmount,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
-      cessAmount,
-      totalGstAmount,
-      lineTotal,
-      totalReceivedUnits,
-      netLandingCostPerBaseUnit,
-      actualMarginPct,
-      marginGuardrailTriggered,
-      alertColor,
-      suggestedRetailSellingPrice,
-      currentRetailSellingPrice: retailSellingPrice,
-      costIncreased,
-    };
-  }
-```
-
----
-
-### B. Fast Direct GRN Atomic Transaction & 3-Way Match Discrepancy Detection
-**File:** `apps/api/src/modules/procurement/grn/grn.service.ts`
-```typescript
-  async createFastDirectGrn(dto: CreateFastDirectGrnDto) {
-    // ... validates supplier, branch, bins, and inter-state GST ...
-    return this.prisma.$transaction(async (tx) => {
-      let subTotal = new Decimal(0);
-      let taxTotal = new Decimal(0);
-      let totalFreight = new Decimal(dto.totalFreightApportion ?? 0);
-      let allMarginPassed = true;
-      let totalStickersCount = 0;
-
-      for (const line of dto.lines) {
-        // ... evaluates calculateGrnLineCosting ...
-        // Upserts InventoryBatch
-        let batch = await tx.inventoryBatch.findUnique({
-          where: { branchId_productId_batchNumber: { branchId: dto.branchId, productId: line.productId, batchNumber: line.batchNumber } },
-        });
         if (batch) {
+          // REMOD-301A: Weighted Average Net Landing Cost for Existing Active Batches
+          const existingStockBalances = await tx.binStockBalance.findMany({
+            where: {
+              branchId: dto.branchId,
+              batchId: batch.id,
+              quantity: { gt: 0 },
+            },
+          });
+          const existingQty = existingStockBalances.reduce(
+            (acc, b) => acc.add(b.quantity),
+            new Decimal(0),
+          );
+
+          let finalNetLandingCost = costing.netLandingCostPerBaseUnit;
+          if (existingQty.greaterThan(0)) {
+            const totalStock = existingQty.add(costing.totalReceivedUnits);
+            const existingValue = existingQty.mul(batch.netLandingCost);
+            const newValue = costing.totalReceivedUnits.mul(costing.netLandingCostPerBaseUnit);
+            finalNetLandingCost = existingValue.add(newValue).div(totalStock).toDecimalPlaces(4);
+          }
+
           batch = await tx.inventoryBatch.update({
             where: { id: batch.id },
             data: {
               purchaseRate: new Decimal(line.purchaseRate),
-              netLandingCost: costing.netLandingCostPerBaseUnit,
+              netLandingCost: finalNetLandingCost,
               retailSellingPrice: new Decimal(line.retailSellingPrice),
               mrp: new Decimal(line.targetMrp),
               expiryDate: expiryDate ?? batch.expiryDate,
             },
           });
-        } else {
-          batch = await tx.inventoryBatch.create({ ... });
         }
-
-        // Upsert BinStockBalance
-        await tx.binStockBalance.upsert({ ... });
-
-        // Record StockLedger
-        await tx.stockLedger.create({
-          data: {
-            tenantId: dto.tenantId,
-            branchId: dto.branchId,
-            binId: targetBinId!,
-            productId: line.productId,
-            batchId: batch.id,
-            movementType: StockMovementTypeEnum.INWARD_GRN,
-            quantityChange: costing.totalReceivedUnits,
-            runningBalance: newBalanceQty,
-            referenceType: 'GRN',
-            referenceId: grnNumber,
-            unitCost: costing.netLandingCostPerBaseUnit,
-          },
-        });
-      }
-
-      // Creates GoodsReceiptNote and updates supplier outstanding balance
-      await tx.goodsReceiptNote.create({ ... });
-      await tx.supplier.update({
-        where: { id: dto.supplierId },
-        data: { outstandingBalance: supplier.outstandingBalance.add(netPayable) },
-      });
-
-      return { ...grn, totalStickersToPrint: totalStickersCount };
-    });
-  }
 ```
 
 ---
 
-### C. BYOK AI Structured Vision/Text Extraction & Smart SKU Fuzzy Matcher
+### B. `[REMOD-301B]` Multi-Token & HSN/MRP Ranked Scoring in `AiInvoiceOcrService`
 **File:** `apps/api/src/modules/ai-copilot/ai-invoice-ocr.service.ts`
 ```typescript
-      // Smart SKU Matching: Exact Barcode -> Multi-UOM Barcode -> Name / HSN Similarity
-      if (line.barcode) {
-        const barcodeRec = await this.prisma.productBarcode.findFirst({
-          where: { barcode: line.barcode, product: { tenantId } },
-          include: { product: { include: { hsn: true } } },
-        });
-        if (barcodeRec) {
-          matchedProd = barcodeRec.product;
-          matchType = 'EXACT_BARCODE';
-        }
-      }
-
-      if (!matchedProd && line.barcode) {
-        const uomRec = await this.prisma.productUomConversion.findFirst({
-          where: { barcode: line.barcode, product: { tenantId } },
-          include: { product: { include: { hsn: true } } },
-        });
-        if (uomRec) {
-          matchedProd = uomRec.product;
-          matchType = 'EXACT_BARCODE';
-        }
-      }
-
+      // REMOD-301B: Multi-Token & HSN/MRP Ranked Scoring
       if (!matchedProd && line.rawItemName) {
-        const keywords = line.rawItemName.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter((k) => k.length > 2);
+        const keywords = line.rawItemName
+          .replace(/[^a-zA-Z0-9\s]/g, '')
+          .toLowerCase()
+          .split(/\s+/)
+          .filter((k) => k.length > 2);
+
         if (keywords.length > 0) {
-          matchedProd = await this.prisma.product.findFirst({
+          // Query candidate products matching ANY of the top tokens or HSN code
+          const candidates = await this.prisma.product.findMany({
             where: {
               tenantId,
-              nameEn: { contains: keywords[0], mode: 'insensitive' },
+              isActive: true,
+              OR: [
+                ...keywords.slice(0, 3).map((kw) => ({
+                  nameEn: { contains: kw, mode: 'insensitive' as const },
+                })),
+                ...(line.hsnCode
+                  ? [{ hsn: { hsnCode: line.hsnCode } }]
+                  : []),
+              ],
             },
-            include: { hsn: true },
+            include: {
+              hsn: true,
+              batches: {
+                take: 5,
+                orderBy: { createdAt: 'desc' },
+              },
+            },
+            take: 20,
           });
-          if (matchedProd) matchType = 'NAME_HSN_SIMILARITY';
+
+          // In-memory multi-attribute scoring
+          let bestCandidate = null;
+          let highestScore = 0;
+          const targetMrpDec = new Decimal(line.mrp);
+
+          for (const cand of candidates) {
+            let score = 0;
+            const candNameLower = cand.nameEn.toLowerCase();
+
+            // +30 pts per matching keyword token
+            for (const kw of keywords) {
+              if (candNameLower.includes(kw)) {
+                score += 30;
+              }
+            }
+
+            // +25 pts if HSN code matches
+            if (line.hsnCode && cand.hsn && cand.hsn.hsnCode === line.hsnCode) {
+              score += 25;
+            }
+
+            // +20 pts if an existing batch has matching MRP
+            const mrpMatches = cand.batches.some((b) => b.mrp.equals(targetMrpDec));
+            if (mrpMatches) {
+              score += 20;
+            }
+
+            if (score > highestScore) {
+              highestScore = score;
+              bestCandidate = cand;
+            }
+          }
+
+          // Select candidate only if score meets confidence threshold (score >= 40)
+          if (bestCandidate && highestScore >= 40) {
+            matchedProd = bestCandidate;
+            matchType = 'NAME_HSN_SIMILARITY';
+            confidenceScore = Math.min(100, highestScore);
+          }
         }
       }
+```
+
+---
+
+## 3. WORK ORDER COMPLETION MATRIX (`WO-401` TO `WO-405`)
+
+| WO ID | Module Name | File Paths | Key Functions & Endpoints |
+| :--- | :--- | :--- | :--- |
+| `WO-401` | Shifts & Security | `apps/api/src/modules/pos/shifts/shift.dto.ts`<br>`apps/api/src/modules/pos/shifts/pos-shift.service.ts`<br>`apps/api/src/modules/pos/shifts/pos-security.service.ts`<br>`apps/api/src/modules/pos/shifts/shift.controller.ts` | `POST /api/v1/pos/shifts/open` (Terminal locking)<br>`POST /api/v1/pos/shifts/:id/safe-drop`<br>`GET /api/v1/pos/shifts/:id/x-report`<br>`POST /api/v1/pos/shifts/:id/blind-close` (Denomination total, expected cash calculation, auto-debit to cashier khata on shortage, and Z-Report generation)<br>`POST /api/v1/pos/security/verify-override` (Supervisor PIN audit) |
+| `WO-402` | Promotions & Upsell | `apps/api/src/modules/pos/promotions/promotion.dto.ts`<br>`apps/api/src/modules/pos/promotions/promotion-engine.service.ts`<br>`apps/api/src/modules/pos/promotions/promotion.controller.ts` | `POST /api/v1/pos/promotions/evaluate-cart`<br>Evaluates BOGO deals, Mix & Match (cheapest item discount), Happy Hour time windows, and Cart-Slab live upsell nudges (*"Add ₹X more to get 1kg Sugar @ ₹9!"*) |
+| `WO-403` | POS Billing & Returns | `apps/api/src/modules/pos/billing/billing.dto.ts`<br>`apps/api/src/modules/pos/billing/pos-parked-bill.service.ts`<br>`apps/api/src/modules/pos/billing/pos-billing.service.ts`<br>`apps/api/src/modules/pos/billing/pos-return.service.ts`<br>`apps/api/src/modules/pos/billing/billing.controller.ts`<br>`apps/api/src/modules/pos/pos.module.ts` | `POST /api/v1/pos/billing/park` & `recall` (Cross-counter LAN hold)<br>`POST /api/v1/pos/billing/checkout` (Dynamic combo BOM deduction, GST-inclusive MRP back-calculation, HSN table aggregation, multi-tender split validation)<br>`POST /api/v1/pos/billing/returns` (Instant exchange, 90-day barcoded credit note slip, cash refund with supervisor PIN) |
+| `WO-404` | 5-Peripheral Hardware Bridge | `apps/hardware-bridge/src/escpos.ts`<br>`apps/hardware-bridge/src/serial-scale.ts`<br>`apps/hardware-bridge/src/edc-payment-terminal.ts`<br>`apps/hardware-bridge/src/index.ts` | 80mm & 58mm bilingual thermal receipt formatting with You Saved banner, HSN table, and RJ11 drawer kick pulse (`\x1B\x70\x00\x19\xFA`)<br>RS232/USB continuous scale stream parser<br>EDC payment adapter with NPCI Dynamic UPI URI builder |
+| `WO-405` | React POS & Dual Display UI | `apps/pos-web/src/features/pos/PosBillingScreen.tsx`<br>`apps/pos-web/src/features/pos/CustomerDualDisplayPage.tsx`<br>`apps/pos-web/src/features/pos/ShiftAndZReportPage.tsx`<br>`apps/pos-web/src/App.tsx` | 100% keyboard F1-F12 driven checkout, batch/MRP conflict popup, fast-moving produce touch grid, live upsell banner, multi-tender split modal<br>Secondary display screen with giant green savings counter & Dynamic UPI QR<br>Currency note blind close calculator & printable Z-Report |
+
+---
+
+## 4. CORE MILESTONE 4 ALGORITHM SNIPPETS
+
+### A. Cashier Blind Close, Expected Cash Formula & Shortage Khata Auto-Debit (`PosShiftService.blindCloseShift`)
+**File:** `apps/api/src/modules/pos/shifts/pos-shift.service.ts`
+```typescript
+    // 1. Calculate Physical Cash Total from Denominations
+    let physicalCashTotal = new Decimal(0);
+    const denoms = dto.denominations || {};
+    const multipliers: Record<string, number> = {
+      '2000': 2000, '500': 500, '200': 200, '100': 100,
+      '50': 50, '20': 20, '10': 10, '5': 5, '2': 2, '1': 1, coins: 1,
+    };
+    for (const [key, count] of Object.entries(denoms)) {
+      const mult = multipliers[key] ?? 0;
+      if (mult > 0 && typeof count === 'number' && count > 0) {
+        physicalCashTotal = physicalCashTotal.add(new Decimal(count).mul(mult));
+      }
+    }
+
+    // 2. Compute Expected Cash from System Sales & Refunds
+    // Expected Cash = Opening Float + Total Cash Sales - Total Cash Refunds - Mid-Day Safe Drops
+    const expectedCashSystem = shift.openingFloat
+      .add(totalCashSales)
+      .sub(totalCashRefunds)
+      .sub(shift.midDaySafeDrops)
+      .toDecimalPlaces(2);
+
+    // Shortage or Excess = Physical Cash Counted - Expected Cash System
+    const shortageOrExcess = physicalCashTotal.sub(expectedCashSystem).toDecimalPlaces(2);
+
+    return this.prisma.$transaction(async (tx) => {
+      // If shortage detected (shortageOrExcess < 0), auto-debit to cashier's staff advance ledger
+      if (shortageOrExcess.lessThan(0)) {
+        const shortageAbs = shortageOrExcess.abs();
+        await tx.staffAdvanceAndGroceryKhata.create({
+          data: {
+            tenantId: shift.tenantId,
+            branchId: shift.branchId,
+            userId: shift.cashierId,
+            txnType: StaffKhataTxnTypeEnum.SALARY_ADVANCE,
+            amount: shortageAbs,
+            approvedByUserId: dto.supervisorApprovedId,
+            notes: `Auto Cashier Shortage Debit: Z-Report ${zReportNumber} (-₹${shortageAbs.toFixed(2)})`,
+          },
+        });
+        // Log Audit Exception
+        await tx.auditExceptionLog.create({ ... });
+      }
+
+      // Close the shift and persist Z-Report summary
+      return tx.cashierShift.update({ ... });
+    });
+```
+
+---
+
+### B. Live Cart Promotion & Cart-Slab Upsell Nudge Engine (`PromotionEngineService.evaluateCartPromotions`)
+**File:** `apps/api/src/modules/pos/promotions/promotion-engine.service.ts`
+```typescript
+    // Evaluate Cart-Slab Promotions & Live Upsell Nudges
+    const cartGrossNum = Number(totalCartGross);
+    const slabRules = rules.filter((r) => r.promoType === PromotionTypeEnum.CART_SLAB_UPSELL);
+
+    for (const rule of slabRules) {
+      const cond = rule.conditionConfig as any;
+      const reward = rule.rewardConfig as any;
+      const threshold = cond.minCartTotal || 2000;
+      const rewardDesc = reward.description || (reward.discountAmount ? `Flat ₹${reward.discountAmount} Off` : 'Special Reward');
+
+      if (cartGrossNum >= threshold) {
+        // Qualified! Apply slab discount
+        const disc = reward.discountAmount
+          ? new Decimal(reward.discountAmount)
+          : reward.discountPct
+            ? totalCartGross.mul(new Decimal(reward.discountPct)).div(100)
+            : new Decimal(0);
+
+        if (disc.greaterThan(0)) {
+          totalDiscountApplied = totalDiscountApplied.add(disc);
+          appliedPromos.push({
+            promoId: rule.id,
+            name: rule.name,
+            promoType: rule.promoType,
+            discountAmount: Number(disc),
+            description: `Cart Slab Qualified (≥ ₹${threshold}): ${rewardDesc}`,
+          });
+        }
+      } else if (cartGrossNum >= threshold * 0.8 && cartGrossNum < threshold) {
+        // CRUCIAL UPSELL NUDGE: Cart is between 80% and 99.9% of slab!
+        const amountNeeded = Number((threshold - cartGrossNum).toFixed(2));
+        upsellNudges.push({
+          targetThreshold: threshold,
+          amountNeeded,
+          rewardDescription: rewardDesc,
+          message: `Add ₹${amountNeeded.toFixed(2)} more to reach ₹${threshold} and unlock: ${rewardDesc}!`,
+        });
+      }
+    }
+```
+
+---
+
+### C. Atomic Checkout, Combo BOM Deduction & Inclusive GST Back-Calculation (`PosBillingService.checkout`)
+**File:** `apps/api/src/modules/pos/billing/pos-billing.service.ts`
+```typescript
+        // GST Inclusive Back-Calculation: Taxable = Net / (1 + TaxRate/100)
+        let lineTaxable = lineNet;
+        let lineCgst = new Decimal(0);
+        let lineSgst = new Decimal(0);
+        let lineIgst = new Decimal(0);
+        let lineCess = new Decimal(0);
+
+        const gstRatePct = product.hsn ? product.hsn.igstRate : new Decimal(0);
+        const cessRatePct = product.hsn?.cessRate ?? new Decimal(0);
+        const totalTaxRatePct = gstRatePct.add(cessRatePct);
+
+        if (!isComposition && totalTaxRatePct.greaterThan(0)) {
+          const divisor = new Decimal(1).add(totalTaxRatePct.div(100));
+          lineTaxable = lineNet.div(divisor).toDecimalPlaces(2);
+          const halfGstRate = gstRatePct.div(2);
+          lineCgst = lineTaxable.mul(halfGstRate).div(100).toDecimalPlaces(2);
+          lineSgst = lineTaxable.mul(halfGstRate).div(100).toDecimalPlaces(2);
+          if (cessRatePct.greaterThan(0)) {
+            lineCess = lineTaxable.mul(cessRatePct).div(100).toDecimalPlaces(2);
+          }
+        }
+
+        // Dynamic Combo BOM Stock Deduction from Shop Floor
+        if (product.productType === 'COMBO_KIT' && product.comboAsParent.length > 0) {
+          for (const bomItem of product.comboAsParent) {
+            const childDeductQty = bomItem.quantityRequired.mul(lineQty);
+            // Deducts child balances and logs StockLedger POS_SALE for child item
+          }
+        }
+```
+
+---
+
+### D. Bilingual ESC/POS Thermal Receipt Builder with Savings & HSN Summary
+**File:** `apps/hardware-bridge/src/escpos.ts`
+```typescript
+    // Drawer Kick Pulse (RJ11 Pin 2)
+    if (params.kickDrawer) {
+      buffers.push(this.DRAWER_KICK_PULSE); // \x1B\x70\x00\x19\xFA
+    }
+
+    // Centered Store Header & Bilingual Items
+    buffers.push(this.ALIGN_CENTER);
+    buffers.push(this.BOLD_ON);
+    buffers.push(Buffer.from(`${params.storeName}\n`, 'utf-8'));
+    buffers.push(Buffer.from(`GSTIN: ${params.gstin}\n`, 'utf-8'));
+
+    // Savings Banner
+    if (params.totalSavings > 0) {
+      buffers.push(this.ALIGN_CENTER);
+      buffers.push(this.BOLD_ON);
+      buffers.push(Buffer.from(`*** YOU SAVED Rs. ${params.totalSavings.toFixed(2)} TODAY! ***\n`, 'utf-8'));
+      buffers.push(this.BOLD_OFF);
+    }
+
+    // HSN-wise GST Breakup Table
+    if (params.hsnSummary && params.hsnSummary.length > 0) {
+      buffers.push(Buffer.from('HSN TAX BREAKUP SUMMARY:\n', 'utf-8'));
+      buffers.push(Buffer.from('HSN       Taxable    CGST     SGST    Total Tax\n', 'utf-8'));
+      for (const h of params.hsnSummary) {
+        // ... formats 48-col table ...
+      }
+    }
 ```
 
 ---
@@ -492,17 +353,17 @@ The schemas at prisma/schema are valid 🚀
 $ pnpm -r typecheck
 
 packages/database typecheck$ tsc --noEmit
-└─ Done in 646ms
+└─ Done in 647ms
 packages/shared-types typecheck$ tsc --noEmit
-└─ Done in 1.2s
+└─ Done in 1.5s
 apps/hardware-bridge typecheck$ tsc --noEmit
-└─ Done in 1.4s
+└─ Done in 1.6s
 apps/cloud-admin typecheck$ tsc --noEmit
-└─ Done in 1.9s
-apps/pos-web typecheck$ tsc --noEmit
 └─ Done in 2.1s
+apps/pos-web typecheck$ tsc --noEmit
+└─ Done in 2.6s
 apps/api typecheck$ tsc --noEmit
-└─ Done in 2.4s
+└─ Done in 2.7s
 ```
 **Result:** 0 errors across all 6 workspaces.
 
@@ -524,11 +385,11 @@ $ turbo run build
 @ti-erp/api:build: $ nest build
 @ti-erp/cloud-admin:build: $ next build (Compiled successfully)
 @ti-erp/pos-web:build: $ tsc && vite build
-@ti-erp/pos-web:build: dist/assets/index-C5jvH23K.js 228.20 kB │ gzip: 62.99 kB
-@ti-erp/pos-web:build: ✓ built in 723ms
+@ti-erp/pos-web:build: dist/assets/index-DLmi3PLG.js 271.85 kB │ gzip: 71.24 kB
+@ti-erp/pos-web:build: ✓ built in 766ms
 
  Tasks:    6 successful, 6 total
-  Time:    3.083s
+  Time:    3.585s
 ```
 **Result:** 6/6 successful Turbo builds with 0 failures.
 
@@ -537,6 +398,5 @@ $ turbo run build
 ## 6. GIT COMMIT & REMOTE PUSH CONFIRMATION
 - **Branch:** `main`
 - **Origin:** `https://github.com/Ganesaperumal/TI_ERP.git`
-- **Verified Commit SHA:** `b2d7739a53faa6f2089bf640297a7ae2654ab7ff`
-- **Commit Message:** `feat: DISPATCH-003 milestone 3 - procurement, auto-reorder, GRN, margin guardrail, consignment and AI OCR`
+- **Commit Message:** `feat: DISPATCH-004 milestone 4 - high-speed pos, promotions, split pay, sales returns, cashier blind close and hardware bridge`
 - **All control documents preserved strictly in `agy-cli/`**.

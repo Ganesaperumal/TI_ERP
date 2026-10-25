@@ -1,9 +1,9 @@
 # TI-ERP EXECUTION STATE TRACKER
-**Current Phase:** Phase 5 — Customer CRM, Tiered Loyalty & OTP Redemption, Monthly Credit Khata, Ration Cycle Reminders, Gift Cards, Home Delivery Pick-Pack & Queue-Buster mPOS
-**Active Milestone:** DISPATCH-005 (Milestone 5)
+**Current Phase:** Phase 6 — GST Compliance, Automated Double-Entry Accounting, Bank Reconciliation, Tally XML Bridge & Supermarket HR/Payroll
+**Active Milestone:** DISPATCH-006 (Milestone 6)
 **Status:** `COMPLETED & VERIFIED`
-**Last Verified Commit:** `327779a470d359db1a6047cac0357bc9b89ae978`
-**Last Updated:** 2026-10-25T13:00:00+05:30
+**Last Verified Commit:** `594dae17c99c253b00f79c4d956b8138045524ae`
+**Last Updated:** 2026-10-25T13:33:00+05:30
 
 ---
 
@@ -11,22 +11,21 @@
 - [x] **M1: Foundation & Database Architecture** (Monorepo, Docker LAN/Cloud Setup, Full Prisma Schema, Config Engine) — `COMPLETED (Commit: 11613591e87e1199a51c730eb92cdb75b9316955)`
 - [x] **M2: Core Masters & Inventory Engine** (Tenants, Branches, Bins, Multi-UOM, Products, Batches/MRP, Barcodes, Repacking, Combos) — `COMPLETED & VERIFIED`
 - [x] **M3: Procurement, Supplier & AI OCR Engine** (PO, Auto-Reorder, GRN Fast & 3-Way Match, Net Landing Cost, Debit Notes, Consignment, BYOK AI OCR) — `COMPLETED & VERIFIED`
-- [x] **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge** (Keyboard POS, LAN Hold/Recall, Split Pay, Schemes, EscPOS/Scale/ZPL Bridge) — `COMPLETED & VERIFIED (REMOD-401 Patched)`
-- [x] **M5: CRM, Loyalty, Khata, Home Delivery & Queue-Buster mPOS** (Points, OTP, Credit Ledger, Pick-Pack, Queue-Buster mPOS) — `COMPLETED & VERIFIED (Commit: 327779a470d359db1a6047cac0357bc9b89ae978)`
-- [ ] **M6: GST, Double-Entry Accounting & HR/Payroll** (Auto-Vouchers, GSTR-1/2B/3B, Tally XML, Attendance, Payroll)
+- [x] **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge** (Keyboard POS, LAN Hold/Recall, Split Pay, Schemes, EscPOS/Scale/ZPL Bridge) — `COMPLETED & VERIFIED`
+- [x] **M5: CRM, Loyalty, Khata, Home Delivery & Queue-Buster mPOS** (Points, OTP, Credit Ledger, Pick-Pack, Queue-Buster mPOS) — `COMPLETED & VERIFIED (Commit: 327779a470d359db1a6047cac0357bc9b89ae978, Patched in 594dae17c99c253b00f79c4d956b8138045524ae)`
+- [x] **M6: GST, Double-Entry Accounting & HR/Payroll** (Auto-Vouchers, GSTR-1/2B/3B, Tally XML, Attendance, Payroll) — `COMPLETED & VERIFIED (Commit: 594dae17c99c253b00f79c4d956b8138045524ae)`
 - [ ] **M7: Sync Engine, AI Copilot, Owner Mobile & SaaS License Portal** (LAN-to-Cloud Sync, BYOK AI, Super-Admin)
 
 ---
 
-## Active Work Orders (`DISPATCH-005` / Milestone 5)
+## Active Work Orders (`DISPATCH-006` / Milestone 6)
 
 | WO ID | Assigned Dev | Module & Scope | Status | Deliverables |
 | :--- | :--- | :--- | :--- | :--- |
-| `REMOD-401A` | `DEV-1` | Automated Diff Capture in `verify-and-bundle.js` | `COMPLETED` | `agy-cli/verify-and-bundle.js` capturing `git show --stat HEAD` and `git diff HEAD~1 HEAD` post-commit. |
-| `REMOD-401B` | `DEV-3` | 1-Paisa GST Back-Calculation Accounting Identity & Inter-State B2B IGST | `COMPLETED` | `PosBillingService.checkout()` enforcing `lineTaxable = lineNet - (lineCgst + lineSgst + lineIgst + lineCess)` and customer GSTIN state check. |
-| `REMOD-401C` | `DEV-3` | Prevent Double Stock Deduction on `PRE_PACKED` vs. `DYNAMIC_POS` Combos | `COMPLETED` | `PosBillingService.checkout()` checking `comboMode === DYNAMIC_POS` before deducting child BOM items, plus `assemblePrePackedCombo` in `InventoryBatchService`. |
-| `WO-501` | `DEV-1` | Customer CRM, Tiered Loyalty Engine, Margin Points & Anti-Fraud OTP | `COMPLETED` | `apps/api/src/modules/crm/loyalty/`: Customer lookup/register, category/margin point calculation, tier auto-upgrades (`SILVER`/`GOLD`/`VIP`), time-bound OTP generation & verification. |
-| `WO-502` | `DEV-2` | Customer Credit Khata, Credit Limit Guardrails, Monthly WhatsApp & Gift Cards | `COMPLETED` | `apps/api/src/modules/crm/khata-giftcards/`: Khata credit limit/days enforcement, supervisor PIN override, repayments, monthly WhatsApp statements with UPI link, prepaid gift cards issue/validate/deduct. |
-| `WO-503` | `DEV-3` | 1st-to-10th Monthly Ration Cycle Tracker, RFM Segmentation & Digital WhatsApp Receipts | `COMPLETED` | `apps/api/src/modules/crm/campaigns/`: RFM segmentation (`CHAMPIONS`, `AT_RISK_MISSING_RATION`, etc.), 1st-to-10th cycle detector, comeback coupons, digital receipt dispatch & 1-5 star feedback. |
-| `WO-504` | `DEV-4` | Home Delivery Pick-Pack-Dispatch, Aisle-Sorted Pick-Lists & Queue-Buster Mobile mPOS | `COMPLETED` | `apps/pos/fulfillment/`: WhatsApp/phone delivery orders, aisle/rack walking order pick-lists, rider evening cash/UPI reconciliation, mobile mPOS queue-token generation (`QB-XXXX`) & cart recall. |
-| `WO-505` | `DEV-5` | React Frontend in `apps/pos-web`: CRM/Loyalty/Khata/Ration UI & Delivery/Queue-Buster UI | `COMPLETED` | `apps/pos-web/src/features/crm/CrmLoyaltyAndKhataPage.tsx`, `apps/pos-web/src/features/fulfillment/DeliveryAndQueueBusterPage.tsx`, wired into `App.tsx` and `PosBillingScreen.tsx`. |
+| `REMOD-501A` | `DEV-2` | Dynamic Merchant UPI VPA & Store Name from `StoreConfig` in Statements | `COMPLETED & VERIFIED` | `CustomerKhataService.sendWhatsAppStatement()` fetching dynamic VPA and store name via `TenantBranchService.getMergedStoreConfig`. |
+| `REMOD-501B` | `DEV-1` & `DEV-3` | Proportionate Loyalty Point Clawback on Sales Return | `COMPLETED & VERIFIED` | `PosReturnService.processSalesReturn()` reversing proportionate earned loyalty points on returns and recording `POINTS_REVERSED_ON_RETURN` in `LoyaltyLedger`. |
+| `WO-601` | `DEV-1` | Supermarket Chart of Accounts Auto-Seeder, Balanced Journal Engine & Real-Time Financials | `COMPLETED & VERIFIED` | `apps/api/src/modules/accounting/core/`: COA seeder, automated double-entry postings (`postPosZReportJournal`, `postGrnPurchaseJournal`, `postWastageOrDamageWriteOff`, `postStoreExpenseVoucher`), Day Book, Trial Balance, Live P&L and Balance Sheet. |
+| `WO-602` | `DEV-2` | Auditor-Ready GST Engine: GSTR-1 JSON/CSV, GSTR-2B vs. GRN ITC Reconciliation & E-Invoice / E-Way Bill | `COMPLETED & VERIFIED` | `apps/api/src/modules/accounting/gst/`: GSTR-1 sections (`b2b`, `b2cl`, `b2cs`, `cdnr`, `hsn`, `doc_issue`), GSTR-2B matching with ITC at risk flagging, GSTR-3B liability vs. ITC table, and NIC E-Invoice / E-Way Bill JSON payloads. |
+| `WO-603` | `DEV-3` | Bank UPI/Card MDR Settlement Reconciliation & 1-Click Tally Prime XML Bridge | `COMPLETED & VERIFIED` | `apps/api/src/modules/accounting/reconciliation-tally/`: Bank/UPI settlement batch matching, automated MDR variance calculation, auto-posting clearing journal voucher, and 1-click Tally Prime XML voucher/ledger export. |
+| `WO-604` | `DEV-4` | Supermarket HR, Line-Item Salesman Commissions, Biometric/Selfie Attendance & Monthly Payroll | `COMPLETED & VERIFIED` | `apps/api/src/modules/hr/`: Staff master with cost masking guard, biometric/selfie attendance with overtime calculation, salesman commission aggregator, staff salary advance/grocery khata, and automated net monthly payroll formula. |
+| `WO-605` | `DEV-5` | React Frontend in `apps/pos-web`: Finance, GST, Tally Studio, Bank Recon & HR/Payroll Pages | `COMPLETED & VERIFIED` | `apps/pos-web/src/features/accounting/FinanceGstAndTallyPage.tsx`, `apps/pos-web/src/features/hr/HrAttendanceAndPayrollPage.tsx`, wired into `App.tsx`. |

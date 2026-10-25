@@ -2,8 +2,8 @@
 **From:** Argon (Director & CTO — Head Office / Gemini Web)
 **To:** Agy CLI Execution Squad (5x Senior Devs — Flash 3.8 High)
 **Repository:** `https://github.com/Ganesaperumal/TI_ERP.git`
-**Last Verified Commit:** `b496606bc2cdba2a014edb594face9f9f785144d`
-**Dispatch ID:** `DISPATCH-005` (`REMOD-401` Fixes + Milestone 5: Customer CRM, Tiered Loyalty & OTP Redemption, Monthly Credit Khata, Ration Cycle Reminders, Gift Cards, Home Delivery Pick-Pack & Queue-Buster mPOS)
+**Last Verified Commit:** `327779a470d359db1a6047cac0357bc9b89ae978`
+**Dispatch ID:** `DISPATCH-006` (`REMOD-501` Fixes + Milestone 6: GST Compliance (GSTR-1/2B/3B, E-Invoice/E-Way Bill), Automated Double-Entry Accounting, UPI/Bank MDR Reconciliation, 1-Click Tally Prime XML Bridge & HR/Payroll)
 **Status:** `EXECUTE IMMEDIATELY`
 
 ---
@@ -11,120 +11,147 @@
 ## SECTION A: DOCUMENTATION & STATE TRACKER UPDATES (MANDATORY FIRST STEP)
 
 1. **Update `agy-cli/02_STATE_TRACKER.md`:**
-   - Mark **M3: Procurement, Supplier & AI OCR Engine** as `COMPLETED & VERIFIED`.
-   - Mark **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge (`WO-401` to `WO-405`)** as `COMPLETED — PENDING REMOD-401 PATCH (Commit: b496606bc2cdba2a014edb594face9f9f785144d)`.
-   - Mark **M5: CRM, Loyalty, Khata, Home Delivery & Queue-Buster mPOS (`WO-501` to `WO-505`)** as `IN_PROGRESS`.
+   - Mark **M4: High-Speed POS, Promotions, Shift Registers & Hardware Bridge** as `COMPLETED & VERIFIED`.
+   - Mark **M5: CRM, Loyalty, Khata, Home Delivery & Queue-Buster mPOS (`WO-501` to `WO-505`)** as `COMPLETED — PENDING REMOD-501 PATCH (Commit: 327779a470d359db1a6047cac0357bc9b89ae978)`.
+   - Mark **M6: GST, Double-Entry Accounting, Bank Recon, Tally Bridge & HR/Payroll (`WO-601` to `WO-605`)** as `IN_PROGRESS`.
 
 ---
 
-## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-401`)
+## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-501`)
 
-Fix these 3 critical bugs caught during Argon CTO's inspection of Commit `b496606bc2cdba2a014edb594face9f9f785144d`:
+Fix these 2 production bugs caught during Argon CTO's inspection of Commit `327779a470d359db1a6047cac0357bc9b89ae978`:
 
-### 1. `[REMOD-401A]` Assigned to `DEV-1` — Fix `agy-cli/verify-and-bundle.js` Post-Commit Diff Capture
-- **File:** `agy-cli/verify-and-bundle.js`
-- **Issue:** When `verify-and-bundle.js` runs *after* `git commit`, `git diff HEAD` is empty because changes are already committed.
-- **Fix:** Update `agy-cli/verify-and-bundle.js` so it captures `git show --stat HEAD` AND `git diff HEAD~1 HEAD --apps --packages` (falling back to `git diff HEAD` if uncommitted), and always run `node agy-cli/verify-and-bundle.js` as the final step before pushing!
+### 1. `[REMOD-501A]` Assigned to `DEV-2` — Remove Hardcoded UPI VPA & Store Name in `CustomerKhataService`
+- **File:** `apps/api/src/modules/crm/khata-giftcards/customer-khata.service.ts`
+- **Issue:** `sendWhatsappStatement` hardcoded `pa=tierp.store@okhdfcbank` and `pn=TI Supermarket` in the NPCI UPI URI.
+- **Fix:** Fetch the branch's merged `StoreConfig` (via `TenantBranchService.getMergedStoreConfig`) and `Branch` record, using the configured merchant UPI VPA and branch/tenant name dynamically.
 
-### 2. `[REMOD-401B]` Assigned to `DEV-3` — Fix 1-Paisa GST Back-Calculation Rounding Drift & Inter-State B2B IGST in `PosBillingService.checkout()`
-- **File:** `apps/api/src/modules/pos/billing/pos-billing.service.ts`
-- **Issues Found:**
-  1. Rounding `lineTaxable`, `lineCgst`, `lineSgst`, and `lineCess` independently causes a `±₹0.01` mismatch where `lineTaxable + lineCgst + lineSgst + lineCess !== lineNet` (e.g., `₹100` @ 18% GST yields `84.75 + 7.63 + 7.63 = 100.01`).
-  2. When a B2B customer has an inter-state GSTIN (state code != branch GSTIN state code), tax must go to `lineIgst` instead of `lineCgst + lineSgst`.
-- **Fix:**
-  - After computing `lineCgst`, `lineSgst` (or `lineIgst` for inter-state), and `lineCess` rounded to 2 decimal places, enforce the exact accounting identity:
-    $$\text{lineTaxable} = \text{lineNet} - (\text{lineCgst} + \text{lineSgst} + \text{lineIgst} + \text{lineCess})$$
-    This guarantees `Taxable + Tax === Net Line Total` to the exact paisa (`0.00`) on every single invoice and GSTR-1 export!
-
-### 3. `[REMOD-401C]` Assigned to `DEV-3` — Prevent Double Stock Deduction on `PRE_PACKED` vs. `DYNAMIC_POS` Combos
-- **File:** `apps/api/src/modules/pos/billing/pos-billing.service.ts`
-- **Issue:** `checkout()` currently deducts child `comboAsParent` BOM items for all `COMBO_KIT` products without checking whether the combo is `DYNAMIC_POS` or `PRE_PACKED`. For a `PRE_PACKED` hamper that already has its own assembled batch stock on the shelf, deducting child items again at POS causes double inventory deduction.
-- **Fix:** Only deduct child `ComboBomItem` stock at POS checkout when the combo is configured as dynamic (`isDynamicPosCombo` / no pre-assembled parent batch stock deducted); if it is `PRE_PACKED`, deduct only the parent combo batch from `SHOP_FLOOR` (and provide a back-office `assemblePrePackedCombo` endpoint in `InventoryBatchService` that consumes child BOM items to create the pre-packed parent batch).
+### 2. `[REMOD-501B]` Assigned to `DEV-1` & `DEV-3` — Proportionate Loyalty Point Reversal on Sales Return
+- **Files:** `apps/api/src/modules/pos/billing/pos-return.service.ts` & `apps/api/src/modules/crm/loyalty/loyalty-engine.service.ts`
+- **Issue:** When a customer returns items from an invoice that earned loyalty points, those earned points were not reversed, enabling point-redemption abuse.
+- **Fix:** Inside `PosReturnService.processSalesReturn()`, if the original `PosInvoice` has a `customerId` and `loyaltyPointsEarned > 0`, calculate the proportionate points to claw back:
+  $$\text{Points to Claw Back} = \text{round}\left(\text{Original Points Earned} \times \frac{\text{Total Refund Amount}}{\text{Original Invoice Net Payable}}\right)$$
+  Deduct those points from `Customer.loyaltyPointsBalance` and record a `POINTS_REVERSED_ON_RETURN` entry in `LoyaltyLedger`.
 
 ---
 
-## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 5 (`WO-501` TO `WO-505`)
+## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 6 (`WO-601` TO `WO-605`)
 
-Milestone 5 builds the complete **Customer Retention, Loyalty Points (with Anti-Fraud OTP), Monthly Credit Khata, 1st-to-10th Monthly Ration Reminders, Gift Cards, Home Delivery Pick-Pack, and Queue-Buster Mobile mPOS Engine**.
+Milestone 6 builds the complete **Auditor-Ready GST Compliance Suite, Automated Double-Entry Accounting Engine, Bank/UPI MDR Settlement Reconciliation, 1-Click Tally Prime XML Exporter, and Supermarket HR/Attendance/Payroll Module**.
 
-### [WO-501] Assigned to `DEV-1` (Customer CRM, Tiered Loyalty Engine, Category/Margin Point Rules & Anti-Fraud OTP Redemption)
-**Target Directory:** `apps/api/src/modules/crm/loyalty/`
+### [WO-601] Assigned to `DEV-1` (Automated Double-Entry Accounting Engine, Chart of Accounts & Financial Statements)
+**Target Directory:** `apps/api/src/modules/accounting/core/`
 **Tasks:**
-1. **`CustomerService` & `LoyaltyEngineService` (`/api/v1/crm/customers` & `/api/v1/crm/loyalty`):**
-   - Fast phone-number lookup (`GET /api/v1/crm/customers/by-phone/:phone`), auto-registration at POS, GSTIN storage for B2B buyers, and family/anniversary dates.
-   - **Configurable Loyalty Earning Calculator (`calculatePointsEarnedForInvoice`):**
-     - Supports rule-based earning configured in `StoreConfig` (e.g., `1 point per ₹100 spent`, or category/margin-based multipliers where low-margin staples earn `0.25x` and high-margin repacked/apparel items earn `2x` points).
-     - **Automatic Tier Upgrade Engine:** Tracks cumulative / monthly spend to auto-upgrade customers across `SILVER` $\rightarrow$ `GOLD` (e.g., $\ge ₹10,000$/mo $\rightarrow$ `1.5x` points) $\rightarrow$ `VIP` ($\ge ₹25,000$/mo $\rightarrow$ `2x` points + special tier pricing).
-   - **Anti-Fraud Point Redemption with Configurable OTP (`POST /api/v1/crm/loyalty/request-redemption-otp` & `verify-redemption`):**
-     - Checks `StoreConfig.crm.requireOtpForLoyaltyRedemption`.
-     - If `false`: allows instant point redemption at POS.
-     - If `true`: generates a 4-digit time-bound OTP, dispatches via WhatsApp/SMS gateway hook, and requires verification before `PosBillingService.checkout()` accepts a `LOYALTY_POINTS` payment split (stopping cashier point theft!).
+1. **Default Supermarket Chart of Accounts Auto-Seeder (`AccountingSetupService`):**
+   - Ensures every tenant has the standard Indian retail `AccountGroup` & `LedgerAccount` hierarchy across `ASSET`, `LIABILITY`, `INCOME`, and `EXPENSE`:
+     - *Assets:* Cash-in-Hand (Counter Drawers), Main Safe Cash, Bank Accounts (HDFC/SBI/ICICI), UPI/Card Pending Settlement Clearing Account, Inventory Asset (Closing Stock), Accounts Receivable (Customer Khata), GST Input Tax Credit (`CGST Input`, `SGST Input`, `IGST Input`, `Cess Input`), Staff Salary Advances.
+     - *Liabilities:* Accounts Payable (Sundry Creditors / Suppliers), GST Output Tax Liability (`CGST Output`, `SGST Output`, `IGST Output`, `Cess Output`), Customer Prepaid Gift Cards & Credit Note Liability.
+     - *Income:* Retail POS Sales, Wholesale B2B Sales, Other Store Income (Brand Display/End-Cap Rentals).
+     - *Expenses:* Cost of Goods Sold (COGS), Inventory Shrinkage/Wastage/Damage Write-off, Bank MDR & Payment Gateway Charges, Store Rent, Electricity/EB Bill, Packaging Materials, Staff Salaries & Incentives, Tempo Freight & Delivery Fuel.
+2. **Automated Double-Entry Journal Posting Engine (`AccountingVoucherService`):**
+   - Enforces the strict invariant: $\sum \text{Debit} === \sum \text{Credit}$ (`Decimal(15,2)`) on every `JournalVoucher` (`SALES`, `PURCHASE`, `RECEIPT`, `PAYMENT`, `CONTRA`, `JOURNAL`, `DEBIT_NOTE`, `CREDIT_NOTE`).
+   - **Auto-Posting Hooks (Zero Manual Bookkeeping):**
+     - `postPosZReportJournal(shiftId)`: Summarizes the shift's sales, COGS, GST Output, and tender splits into a balanced Double-Entry voucher.
+     - `postGrnPurchaseJournal(grnId)`: Posts Inventory Asset + GST Input Credit Dr $\rightarrow$ Supplier Payable Cr.
+     - `postWastageOrDamageWriteOff(ledgerId)`: Posts Inventory Shrinkage Expense Dr $\rightarrow$ Inventory Asset Cr.
+     - `postStoreExpenseVoucher(dto)`: Allows recording daily shop petty cash / rent / EB expenses with optional GST input credit.
+3. **Real-Time Financial Reports (`FinancialReportService`):**
+   - `GET /api/v1/accounting/reports/day-book` & `cash-bank-book`
+   - `GET /api/v1/accounting/reports/trial-balance`
+   - `GET /api/v1/accounting/reports/profit-and-loss`: Computes live Revenue, COGS (from `PosInvoiceLine.netLandingCostSnapshot`), Gross Profit, Operating Expenses, Shrinkage, and Net Profit, plus Live Closing Stock valuation from `BinStockBalance × InventoryBatch.netLandingCost`!
+   - `GET /api/v1/accounting/reports/balance-sheet`
 
 ---
 
-### [WO-502] Assigned to `DEV-2` (Customer Credit Khata, Credit Limit Guardrails, 1-Click Monthly WhatsApp Statements & Prepaid Gift Cards)
-**Target Directory:** `apps/api/src/modules/crm/khata-giftcards/`
+### [WO-602] Assigned to `DEV-2` (Auditor-Ready GST Compliance Engine: GSTR-1 JSON/CSV, GSTR-2B ITC Reconciliation, GSTR-3B & E-Invoice / E-Way Bill)
+**Target Directory:** `apps/api/src/modules/accounting/gst/`
 **Tasks:**
-1. **Customer Credit (Khata) & Institutional Billing Engine (`CustomerKhataService`):**
-   - Enforces per-customer `creditLimit` (e.g., `₹15,000`) and `creditDays` (e.g., `30 days`) during POS checkout when `CUSTOMER_KHATA` tender is used.
-   - If `currentBalance + billKhataAmount > creditLimit` or overdue bills exist past `creditDays`, blocks checkout unless a verified `supervisorPin` override is provided!
-   - `POST /api/v1/crm/khata/repayment`: Records part or full Khata settlement (`CASH`, `UPI`, `NEFT`, `CHEQUE`), updates `CustomerKhataLedger` and `Customer.creditBalance`, and generates a payment receipt.
-   - **Automated 1st-of-Month WhatsApp Statement & UPI Payment Link (`GET /api/v1/crm/khata/monthly-statements?branchId=...` & `POST /api/v1/crm/khata/:customerId/send-whatsapp-statement`):**
-     - Aggregates all credit bills and repayments for the month, generates a structured statement summary + NPCI Dynamic UPI collection link (`upi://pay?pa=...&am=OUTSTANDING_BALANCE`), and logs dispatch.
-2. **Prepaid Barcoded Gift Cards & Festival Vouchers (`GiftCardService`):**
-   - `POST /api/v1/crm/gift-cards/issue`: Issues physical or digital barcoded gift cards (`₹500`, `₹1,000`, `₹2,000`, or custom amount) with expiry date.
-   - `GET /api/v1/crm/gift-cards/validate/:cardCode` & atomic balance deduction inside `PosBillingService.checkout()` when `GIFT_CARD` payment split is used.
+1. **GSTR-1 Government Portal Offline JSON & Summary Generator (`Gstr1Service`):**
+   - `GET /api/v1/accounting/gst/gstr1?branchId=...&month=...&year=...`:
+     - Aggregates all `PosInvoice` and `SalesReturn` records for the period into the exact official Indian GSTN sections:
+       1. **`b2b`**: Invoices where customer has a valid 15-digit `gstin` (grouped by GSTIN, invoice level, taxable value, CGST, SGST, IGST, Cess).
+       2. **`b2cl`**: Inter-state B2C invoices with value $> ₹2,50,000$.
+       3. **`b2cs`**: Consolidated B2C Small retail sales grouped by State Code + GST Rate Slab (`0%`, `5%`, `12%`, `18%`, `28%`).
+       4. **`cdnr` / `cdnur`**: Credit/Debit notes from `SalesReturn`.
+       5. **`hsn`**: Consolidated HSN-wise summary (`hsn_sc`, `uqc`, `qty`, `val`, `txval`, `iamt`, `camt`, `samt`, `csamt`).
+       6. **`doc_issue`**: Document series summary (First Invoice No, Last Invoice No, Total Issued, Cancelled/Voided Count, Net Issued).
+2. **GSTR-2B vs. Purchase Register Reconciliation (`Gstr2bReconciliationService`):**
+   - `POST /api/v1/accounting/gst/gstr2b-reconcile`:
+     - Accepts uploaded GSTR-2B JSON lines from the GST portal and matches them against the store's `GoodsReceiptNote` records by `Supplier GSTIN` + `Invoice Number` + `Taxable/Tax Value`.
+     - Categorizes every bill into:
+       - `EXACT_MATCH` (100% ITC Safe)
+       - `TAX_VALUE_MISMATCH` (Rounding or rate difference)
+       - `MISSING_IN_GSTR2B_SUPPLIER_NOT_FILED` (**ITC AT RISK!** Flags the supplier so the supermarket owner can hold their payment until they file GST!)
+       - `MISSING_IN_BOOKS` (Supplier filed an invoice not yet entered in GRN).
+3. **GSTR-3B Liability vs. ITC Offset Table (`GET /api/v1/accounting/gst/gstr3b`) & E-Invoice / E-Way Bill Generator (`POST /api/v1/accounting/gst/e-invoice/:invoiceId` & `e-way-bill`):**
+   - Computes Output Tax Liability (Table 3.1) minus Eligible ITC from GRNs (Table 4) = Net Tax Payable in Cash/Credit Ledger.
+   - Generates NIC E-Invoice JSON payload, simulated/live IRN hash, AckNo, Signed QR Code, and E-Way Bill Part-A/Part-B for B2B invoices and inter-branch stock transfers $> ₹50,000$.
 
 ---
 
-### [WO-503] Assigned to `DEV-3` (1st-to-10th Monthly Ration Cycle Tracker, RFM Segmentation, Digital WhatsApp Receipts & Star Feedback)
-**Target Directory:** `apps/api/src/modules/crm/campaigns/`
+### [WO-603] Assigned to `DEV-3` (UPI/Card Bank Settlement & MDR Reconciliation + 1-Click Tally Prime XML Voucher Bridge)
+**Target Directory:** `apps/api/src/modules/accounting/reconciliation-tally/`
 **Tasks:**
-1. **Smart "Monthly Ration Reminder" & RFM Segmentation Engine (`CustomerIntelligenceService`):**
-   - **RFM Analysis (`GET /api/v1/crm/campaigns/rfm-segments?branchId=...`):** Segments customers into `CHAMPIONS`, `REGULAR_MONTHLY_BUYERS`, `AT_RISK_MISSING_RATION`, and `SLEEPING_CUSTOMERS` based on Recency, Frequency, and Monetary spend.
-   - **1st-to-10th Monthly Grocery Cycle Detector (`GET /api/v1/crm/campaigns/missing-monthly-ration?branchId=...`):**
-     - Identifies regular family buyers whose historical purchase pattern shows monthly grocery baskets between the 1st and 10th of prior months, but who have **not yet visited this month**!
-     - Generates a 1-click WhatsApp re-engagement campaign with an auto-generated `PromotionRule` coupon code (*"We miss you! Use code RATION100 for ₹100 off your monthly grocery list this weekend"*).
-2. **Green Paperless Digital WhatsApp Bill & 1–5 Star Feedback Hook (`DigitalReceiptService`):**
-   - `POST /api/v1/crm/campaigns/send-digital-receipt/:invoiceId`: Formats the invoice + savings banner + feedback link for WhatsApp/SMS dispatch.
-   - `POST /api/v1/crm/campaigns/feedback`: Records customer 1–5 star rating for an invoice and triggers an instant Manager Low-Rating Alert if `rating <= 3`.
+1. **Bank & UPI/Card MDR Settlement Reconciliation Engine (`BankReconciliationService`):**
+   - Supermarkets process thousands of UPI (PhonePe, Paytm, GPay, Pine Labs) and Card transactions daily, while banks settle T+1 after deducting MDR/gateway charges.
+   - `GET /api/v1/accounting/recon/pending-settlements?branchId=...`: Lists unsettled `PosPaymentSplit` records grouped by payment mode/provider and date.
+   - `POST /api/v1/accounting/recon/settle-batch`:
+     - Accepts the bank/gateway settlement statement (`expectedGrossAmount`, `actualBankCreditedAmount`, `bankUtrNumber`, `settlementDate`).
+     - Automatically calculates the variance:
+       $$\text{MDR & Gateway Fee} = \text{Expected Gross Amount} - \text{Actual Bank Credited Amount}$$
+     - Atomically marks the `PosPaymentSplit` records as `SETTLED`, flags any abnormal shortage if variance exceeds configured MDR threshold %, and posts a balanced Double-Entry Journal Voucher (`Bank Account Dr`, `Bank MDR Charges Dr` $\rightarrow$ `UPI/Card Pending Clearing Account Cr`)!
+2. **1-Click Tally Prime XML & Excel Export Bridge (`TallyExportService`):**
+   - `GET /api/v1/accounting/tally/export-xml?branchId=...&from=...&to=...`:
+     - Generates a valid **Tally Prime `<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA>...` XML payload** containing:
+       - Master Ledgers (Suppliers, Customers, GST Ledgers, Sales/Purchase Accounts)
+       - All Sales Vouchers (or Consolidated Daily POS Z-Report Sales Vouchers), Purchase GRN Vouchers, Receipt/Payment Vouchers, and Debit/Credit Notes.
+     - Marks exported vouchers with `isSyncedToTally: true` so external Chartered Accountants can import the entire month into Tally Prime in 1 click with zero manual typing!
 
 ---
 
-### [WO-504] Assigned to `DEV-4` (Home Delivery Pick-Pack-Dispatch Engine, Aisle-Sorted Pick-Lists, Delivery Boy Reconciliation & Queue-Buster Mobile mPOS)
-**Target Directory:** `apps/api/src/modules/pos/fulfillment/`
+### [WO-604] Assigned to `DEV-4` (Supermarket HR, Salesman Line-Item Commissions, Biometric/Selfie Attendance & Automated Monthly Payroll Engine)
+**Target Directory:** `apps/api/src/modules/hr/`
 **Tasks:**
-1. **Home Delivery & WhatsApp Order Pick-Pack Workflow (`HomeDeliveryService`):**
-   - `POST /api/v1/pos/fulfillment/delivery-orders`: Creates a delivery order from WhatsApp/Phone/Walk-in.
-   - **Aisle & Rack-Sorted Pick-List Generator (`GET /api/v1/pos/fulfillment/delivery-orders/:id/pick-list`):**
-     - Joins order items with `BinStockBalance` and `StorageBin` coordinates (`aisle`, `rack`, `shelf`), sorting the pick-list in physical walking order so a floor staff member can pick 35 items in 5 minutes!
-   - **Order State Machine & Rider Evening Settlement:**
-     - `ORDER_RECEIVED` $\rightarrow$ `PICKING_IN_PROGRESS` $\rightarrow$ `PACKED_AND_BILLED` $\rightarrow$ `OUT_FOR_DELIVERY` (assigned to Delivery Boy with COD / Dynamic UPI QR printed on bill) $\rightarrow$ `DELIVERED` / `RETURNED`.
-     - `POST /api/v1/pos/fulfillment/rider-settlement`: Reconciles all orders assigned to a Delivery Boy at the end of the shift (`Total COD Cash Collected` + `UPI Verified` + `Undelivered Returned Stock`).
-2. **Queue-Buster Mobile Billing (`mPOS` Token Engine - `QueueBusterService`):**
-   - `POST /api/v1/pos/fulfillment/queue-buster/create-token`: Allows a staff member in the checkout queue with a smartphone/tablet + Bluetooth scanner to scan a customer's trolley and generate a short 6-character **Queue Token / Barcode** (e.g., `QB-4092`).
-   - `GET /api/v1/pos/fulfillment/queue-buster/token/:tokenCode`: When the customer reaches the counter, the cashier scans `QB-4092` -> instantly loads the pre-scanned cart into `PosBillingScreen` for 5-second payment and receipt printing!
+1. **Staff Master, RBAC Cost-Masking Guard & Shift Roster (`StaffHrService`):**
+   - Manage employees, roles, shift rosters (`MORNING`, `EVENING`, `FULL_DAY`), base salary, overtime hourly rate, and salesman commission %.
+   - Provide a reusable `CostMaskingInterceptor` or helper that strips `purchaseRate`, `netLandingCost`, and `actualMarginPct` from API responses if the requesting user's `Role.maskCostAndMargin === true`.
+2. **Biometric Webhook & Geo-Fenced Selfie Attendance (`AttendanceService`):**
+   - `POST /api/v1/hr/attendance/check-in` & `check-out`: Records staff attendance (`PRESENT`, `HALF_DAY`, `LATE`, `ABSENT`, `WEEKLY_OFF`), calculates `overtimeHours` using `Decimal`, and supports both Biometric device webhooks and POS/Mobile Selfie + GPS coordinates.
+3. **Salesman Line-Item Commission & Staff Advance / Grocery Khata (`StaffKhataAndCommissionService`):**
+   - `GET /api/v1/hr/commissions?branchId=...&month=...&year=...`: Aggregates `PosInvoiceLine` records where `salesmanId` is tagged, computing exact staff incentives earned across garments/vessels/special stock.
+   - `POST /api/v1/hr/staff-khata`: Records mid-month salary cash advances and staff grocery purchases.
+4. **Automated Supermarket Payroll Calculator (`PayrollService`):**
+   - `POST /api/v1/hr/payroll/generate-monthly`:
+     - For every active employee in the branch, computes the exact locked-in supermarket payroll formula using `Decimal(15,2)`:
+       $$\text{Net Monthly Payout} = (\text{Pro-Rata Base Salary} + \text{Overtime Pay} + \text{Salesman Commissions}) - (\text{Leave Deductions} + \text{Mid-Month Cash Advances} + \text{Staff Grocery Purchases} + \text{POS Counter Cash Shortages})$$
+     - Persists `MonthlyPayroll` records, generates printable staff payslips, and posts the salary journal voucher to the Accounting engine!
 
 ---
 
-### [WO-505] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: CRM & Loyalty Hub, Customer Khata & Statement Manager, Home Delivery Pick-Pack Board & Queue-Buster mPOS UI)
-**Target Directory:** `apps/pos-web/src/features/crm/` & `apps/pos-web/src/features/fulfillment/` & `apps/pos-web/src/App.tsx`
+### [WO-605] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: GST Filing & 2B Recon Hub, Double-Entry Accounting & Tally Export Studio, Bank/UPI Settlement Recon & HR/Payroll Page)
+**Target Directory:** `apps/pos-web/src/features/accounting/` & `apps/pos-web/src/features/hr/` & `apps/pos-web/src/App.tsx`
 **Tasks:**
-Build high-density, operator-friendly React screens in `apps/pos-web` and wire them into `App.tsx`:
-1. **Customer CRM, Loyalty Tiers, Missing Ration Alerts & Gift Cards (`CrmLoyaltyAndKhataPage.tsx`):**
-   - **Tab 1 (Customers & Loyalty Tiers):** Search by phone, view Silver/Gold/VIP badge, points ledger, and OTP redemption toggle test.
-   - **Tab 2 (Monthly Credit Khata Ledger):** Customer credit balances, overdue alerts, quick repayment entry, and 1-click **"Send Monthly WhatsApp Statement + UPI Link"**.
-   - **Tab 3 (1st–10th Missing Monthly Ration Buyers & RFM):** Live list of missing regular families with 1-click **"Send ₹100 Ration Comeback Coupon on WhatsApp"**.
-   - **Tab 4 (Prepaid Gift Cards):** Issue, print barcode, and check balance of store gift vouchers.
-2. **Home Delivery Dispatch Board & Queue-Buster mPOS Screen (`DeliveryAndQueueBusterPage.tsx`):**
-   - **Kanban / Tab View for Home Delivery:** New WhatsApp Orders $\rightarrow$ Print Aisle-Sorted Pick-List $\rightarrow$ Assign Delivery Boy $\rightarrow$ Evening Rider Cash/UPI Settlement table.
-   - **Queue-Buster Mobile mPOS Mode:** Dedicated mobile-responsive trolley scanning view that generates a scannable Queue Token QR/Barcode (`QB-XXXX`), plus a **"Scan Queue Token"** button inside `PosBillingScreen.tsx`!
+Build high-density executive finance, tax, and HR screens in `apps/pos-web` and wire them into `App.tsx`:
+1. **GST Compliance, GSTR-2B Reconciliation, Accounting & Tally Prime Hub (`FinanceGstAndTallyPage.tsx`):**
+   - **Tab 1 (Live P&L, Trial Balance & Expense Entry):** Shows real-time Revenue, COGS, Gross Margin %, Closing Stock Valuation, Operating Expenses, and Net Profit + quick Store Expense voucher form.
+   - **Tab 2 (GSTR-1, GSTR-3B & E-Invoicing):** 1-click download of GST Portal GSTR-1 JSON, HSN Summary table, Document Series table, and E-Invoice IRN generator.
+   - **Tab 3 (GSTR-2B vs. Purchase GRN Reconciliation):** Highlights suppliers who haven't filed GST (**"ITC AT RISK — HOLD PAYMENT"** badge in red!).
+   - **Tab 4 (UPI/Card Bank Settlement Recon & 1-Click Tally Prime XML Export):** Reconcile T+1 UPI/Card payouts (auto-calculating bank MDR charges) and 1-click **"Download Tally Prime XML"**.
+2. **Supermarket HR, Attendance, Staff Khata & Monthly Payroll Studio (`HrAttendanceAndPayrollPage.tsx`):**
+   - **Tab 1 (Attendance & Shift Roster):** Daily check-in/out board, overtime hours, and biometric/selfie status.
+   - **Tab 2 (Staff Advances, Grocery Khata & Cashier POS Shortages):** View mid-month salary advances, staff grocery bills, and auto-linked Z-Report counter cash shortages.
+   - **Tab 3 (Salesman Incentives & 1-Click Monthly Payroll Run):** Run monthly payroll showing the full breakdown (`Base + OT + Commission - Leaves - Advances - Groceries - Counter Shortages = Net Pay`) with printable Payslip view.
 
 ---
 
 ## SECTION D: MANDATORY AUTOMATED REPORT GENERATION (`agy-cli/WO_TO_HO_REPORT.md`)
 
-When `REMOD-401` (`A`, `B`, `C`) and `WO-501` through `WO-505` are complete:
-1. Run `pnpm --filter @ti-erp/database prisma validate`, `pnpm -r typecheck`, and `pnpm build` and verify **0 errors**.
-2. Commit all work to `main` and run `node agy-cli/verify-and-bundle.js` (updated in `REMOD-401A` so it captures both the build verification logs, the work order summary matrix, key algorithm snippets for `REMOD-401` + `WO-501..505`, and the `git show --stat HEAD` diff report into `agy-cli/WO_TO_HO_REPORT.md`).
-3. Push to `origin/main` so the Boss can hand `agy-cli/WO_TO_HO_REPORT.md` directly to Argon CTO.
+When `REMOD-501` (`A`, `B`) and `WO-601` through `WO-605` are complete:
+1. Run `pnpm --filter @ti-erp/database prisma validate`, `pnpm -r typecheck`, and `pnpm build` and verify **0 errors** across all 6 packages.
+2. Commit all work to `main` and generate `agy-cli/WO_TO_HO_REPORT.md` containing:
+   - Executive Summary & Verified Commit SHA
+   - `REMOD-501` verification snippets (Dynamic UPI VPA from `StoreConfig` + Proportionate Loyalty Point Clawback on Sales Return)
+   - Work Order Completion Matrix (`WO-601` to `WO-605`)
+   - Core Milestone 6 algorithm snippets (`AccountingVoucherService`, `Gstr2bReconciliationService`, `BankReconciliationService`, `TallyExportService`, and `PayrollService.generateMonthlyPayroll`)
+   - Exact terminal outputs of `prisma validate`, `pnpm -r typecheck`, `pnpm build`, and `git show --stat HEAD`.
+3. Push to `origin/main` so the Boss can hand `agy-cli/WO_TO_HO_REPORT.md` to Argon CTO.

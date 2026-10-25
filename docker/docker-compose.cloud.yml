@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  cloud-postgres:
+    image: postgres:16-alpine
+    container_name: tierp-cloud-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tierp_cloud
+      POSTGRES_PASSWORD: tierp_cloud_secure_pass
+      POSTGRES_DB: tierp_cloud_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - cloud_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tierp_cloud -d tierp_cloud_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cloud-redis:
+    image: redis:7-alpine
+    container_name: tierp-cloud-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - cloud_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cloud-api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: tierp-cloud-api
+    restart: unless-stopped
+    depends_on:
+      cloud-postgres:
+        condition: service_healthy
+      cloud-redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      DATABASE_URL: postgresql://tierp_cloud:tierp_cloud_secure_pass@cloud-postgres:5432/tierp_cloud_db?schema=public
+      REDIS_URL: redis://cloud-redis:6379
+      TOPOLOGY_MODE: MULTI_BRANCH
+      STORE_ROLE: CLOUD_HO
+    ports:
+      - "4001:4001"
+
+volumes:
+  cloud_pgdata:
+  cloud_redisdata:

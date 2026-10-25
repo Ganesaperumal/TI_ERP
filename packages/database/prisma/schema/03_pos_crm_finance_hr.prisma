@@ -1,0 +1,596 @@
+// 03_pos_crm_finance_hr.prisma
+// POS Billing, Promotions, CRM/Loyalty/Khata, GST, Automated Double-Entry Accounting & HR/Payroll
+
+enum PosInvoiceTypeEnum {
+  WALK_IN_RETAIL
+  WHOLESALE_B2B
+  HOME_DELIVERY
+  MPOS_QUEUE_TOKEN
+}
+
+enum PaymentMethodEnum {
+  CASH
+  UPI
+  CARD
+  SODEXO
+  CREDIT_NOTE_SLIP
+  LOYALTY_POINTS
+  CUSTOMER_KHATA
+  GIFT_CARD
+}
+
+enum BankSettlementStatusEnum {
+  PENDING
+  SETTLED
+  RECONCILED
+  DISCREPANCY
+}
+
+enum CreditNoteStatusEnum {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+  CANCELLED
+}
+
+enum PromotionTypeEnum {
+  BOGO
+  MIX_AND_MATCH
+  CART_SLAB_UPSELL
+  HAPPY_HOUR
+  COUPON_CODE
+}
+
+enum DeliveryStatusEnum {
+  PICK_LIST_GENERATED
+  PACKED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  RETURNED
+}
+
+enum LoyaltyTierEnum {
+  SILVER
+  GOLD
+  VIP
+}
+
+enum LoyaltyTxnTypeEnum {
+  EARN
+  REDEEM
+  EXPIRED
+  MANUAL_ADJUST
+}
+
+enum KhataTxnTypeEnum {
+  DEBIT_PURCHASE
+  CREDIT_PAYMENT
+  OPENING_BALANCE
+}
+
+enum AccountTypeEnum {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum VoucherTypeEnum {
+  POS_DAY_CLOSE
+  GRN_PURCHASE
+  EXPENSE
+  BANK_SETTLEMENT
+  MANUAL
+}
+
+enum RefundModeEnum {
+  EXCHANGE
+  CREDIT_NOTE
+  CASH_REFUND
+}
+
+enum AttendanceStatusEnum {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum StaffKhataTxnTypeEnum {
+  SALARY_ADVANCE
+  GROCERY_PURCHASE
+  DEDUCTION_REPAYMENT
+}
+
+model PosInvoice {
+  id                  String             @id @default(uuid())
+  tenantId            String
+  branchId            String
+  terminalId          String
+  shiftId             String
+  cashierId           String
+  salesmanId          String?
+  customerId          String?
+  invoiceNumber       String
+  invoiceType         PosInvoiceTypeEnum @default(WALK_IN_RETAIL)
+  totalGrossAmount    Decimal            @db.Decimal(15, 2)
+  totalDiscountAmount Decimal            @default(0) @db.Decimal(15, 2)
+  taxableAmount       Decimal            @db.Decimal(15, 2)
+  cgstAmount          Decimal            @default(0) @db.Decimal(15, 2)
+  sgstAmount          Decimal            @default(0) @db.Decimal(15, 2)
+  igstAmount          Decimal            @default(0) @db.Decimal(15, 2)
+  cessAmount          Decimal            @default(0) @db.Decimal(15, 2)
+  roundOff            Decimal            @default(0) @db.Decimal(5, 2)
+  netPayable          Decimal            @db.Decimal(15, 2)
+  isReturnBill        Boolean            @default(false)
+  cancelledAt         DateTime?
+  cancelReason        String?
+  irnNumber           String?
+  qrCodeText          String?
+  syncVersion         BigInt             @default(1)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  branch              Branch             @relation(fields: [branchId], references: [id])
+  terminal            PosTerminal        @relation(fields: [terminalId], references: [id])
+  shift               CashierShift       @relation(fields: [shiftId], references: [id])
+  salesman            User?              @relation("SalesmanInvoices", fields: [salesmanId], references: [id])
+  customer            Customer?          @relation(fields: [customerId], references: [id])
+
+  lines               PosInvoiceLine[]
+  payments            PosPaymentSplit[]
+  returns             SalesReturn[]
+  deliveryOrders      DeliveryOrder[]
+  eInvoiceLog         EInvoiceLog?
+  loyaltyLedgers      LoyaltyLedger[]
+  khataLedgers        CustomerKhataLedger[]
+
+  @@unique([branchId, invoiceNumber])
+  @@index([tenantId, branchId, createdAt])
+}
+
+model PosInvoiceLine {
+  id                     String         @id @default(uuid())
+  invoiceId              String
+  productId              String
+  batchId                String?
+  hsnId                  String?
+  salesmanId             String?
+  barcodeScanned         String?
+  quantity               Decimal        @db.Decimal(15, 4)
+  mrp                    Decimal        @db.Decimal(15, 2)
+  sellingPrice           Decimal        @db.Decimal(15, 2)
+  netLandingCostSnapshot Decimal        @db.Decimal(15, 4) // Snapshot of landing cost for live daily gross profit
+  discountAmount         Decimal        @default(0) @db.Decimal(15, 2)
+  promoId                String?
+  taxableAmount          Decimal        @db.Decimal(15, 2)
+  cgstAmount             Decimal        @default(0) @db.Decimal(15, 2)
+  sgstAmount             Decimal        @default(0) @db.Decimal(15, 2)
+  igstAmount             Decimal        @default(0) @db.Decimal(15, 2)
+  cessAmount             Decimal        @default(0) @db.Decimal(15, 2)
+  lineTotal              Decimal        @db.Decimal(15, 2)
+
+  invoice                PosInvoice     @relation(fields: [invoiceId], references: [id])
+  product                Product        @relation(fields: [productId], references: [id])
+  batch                  InventoryBatch? @relation(fields: [batchId], references: [id])
+  hsn                    HsnTaxMaster?  @relation(fields: [hsnId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model PosParkedBill {
+  id            String      @id @default(uuid())
+  tenantId      String
+  branchId      String
+  terminalId    String
+  cashierId     String
+  parkReference String      // e.g. "HOLD-01"
+  customerPhone String?
+  cartData      Json        // Serialized line items, totals, promo states
+  isRecalled    Boolean     @default(false)
+  recalledAt    DateTime?
+  parkedAt      DateTime    @default(now())
+
+  terminal      PosTerminal @relation(fields: [terminalId], references: [id])
+
+  @@index([tenantId, branchId, isRecalled])
+}
+
+model PosPaymentSplit {
+  id                  String                   @id @default(uuid())
+  invoiceId           String
+  method              PaymentMethodEnum
+  amount              Decimal                  @db.Decimal(15, 2)
+  cashTendered        Decimal?                 @db.Decimal(15, 2)
+  cashChangeReturned  Decimal?                 @db.Decimal(15, 2)
+  edcTerminalRef      String?
+  upiTxnId            String?
+  creditNoteSlipId    String?
+  giftCardNumber      String?
+  bankSettlementStatus BankSettlementStatusEnum @default(PENDING)
+  bankSettlementRef   String?
+  bankMdrFee          Decimal?                 @default(0) @db.Decimal(15, 2)
+  createdAt           DateTime                 @default(now())
+
+  invoice             PosInvoice               @relation(fields: [invoiceId], references: [id])
+  creditNoteSlip      CreditNoteSlip?          @relation(fields: [creditNoteSlipId], references: [id])
+
+  @@index([invoiceId])
+  @@index([bankSettlementStatus])
+}
+
+model SalesReturn {
+  id                 String          @id @default(uuid())
+  tenantId           String
+  branchId           String
+  originalInvoiceId  String?
+  returnNumber       String
+  refundMode         RefundModeEnum  @default(CREDIT_NOTE)
+  totalRefundAmount  Decimal         @db.Decimal(15, 2)
+  reason             String?
+  approvedByUserId   String?
+  syncVersion        BigInt          @default(1)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  branch             Branch          @relation(fields: [branchId], references: [id])
+  originalInvoice    PosInvoice?     @relation(fields: [originalInvoiceId], references: [id])
+  lines              SalesReturnLine[]
+  creditNoteSlip     CreditNoteSlip?
+
+  @@unique([branchId, returnNumber])
+  @@index([tenantId, branchId])
+}
+
+model SalesReturnLine {
+  id           String      @id @default(uuid())
+  returnId     String
+  productId    String
+  batchId      String?
+  returnedQty  Decimal     @db.Decimal(15, 4)
+  refundRate   Decimal     @db.Decimal(15, 2)
+  lineTotal    Decimal     @db.Decimal(15, 2)
+  returnReason String?
+
+  salesReturn  SalesReturn @relation(fields: [returnId], references: [id])
+
+  @@index([returnId])
+}
+
+model CreditNoteSlip {
+  id             String               @id @default(uuid())
+  tenantId       String
+  branchId       String
+  salesReturnId  String?              @unique
+  slipNumber     String
+  barcode        String               // Barcode printed on thermal slip for scan-to-redeem
+  customerId     String?
+  originalAmount Decimal              @db.Decimal(15, 2)
+  balanceAmount  Decimal              @db.Decimal(15, 2)
+  status         CreditNoteStatusEnum @default(ACTIVE)
+  expiryDate     DateTime
+  syncVersion    BigInt               @default(1)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  salesReturn    SalesReturn?         @relation(fields: [salesReturnId], references: [id])
+  customer       Customer?            @relation(fields: [customerId], references: [id])
+  paymentSplits  PosPaymentSplit[]
+
+  @@unique([tenantId, slipNumber])
+  @@unique([tenantId, barcode])
+  @@index([tenantId, status])
+}
+
+model PromotionRule {
+  id              String            @id @default(uuid())
+  tenantId        String
+  name            String
+  promoType       PromotionTypeEnum
+  startDate       DateTime
+  endDate         DateTime
+  activeDaysOfWeek Json?            // e.g. [1,2,3,4,5,6,7]
+  startHourTime   String?           // e.g. "14:00" for happy hour
+  endHourTime     String?           // e.g. "17:00"
+  priority        Int               @default(100)
+  couponCode      String?
+  conditionConfig Json              // e.g. minCartTotal, buyCategoryIds, buyProductIds, buyQty
+  rewardConfig    Json              // e.g. getFreeProductIds, discountPct, discountAmount
+  isActive        Boolean           @default(true)
+  syncVersion     BigInt            @default(1)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, isActive, promoType])
+}
+
+model DeliveryOrder {
+  id                   String             @id @default(uuid())
+  tenantId             String
+  branchId             String
+  invoiceId            String
+  customerId           String
+  orderNumber          String
+  deliveryAddress      String
+  status               DeliveryStatusEnum @default(PICK_LIST_GENERATED)
+  assignedRiderName    String?
+  assignedRiderPhone   String?
+  expectedDeliveryTime DateTime?
+  deliveredAt          DateTime?
+  codAmountCollected   Decimal?           @db.Decimal(15, 2)
+  settlementId         String?
+  syncVersion          BigInt             @default(1)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  invoice              PosInvoice         @relation(fields: [invoiceId], references: [id])
+  customer             Customer           @relation(fields: [customerId], references: [id])
+  settlement           DeliveryBoySettlement? @relation(fields: [settlementId], references: [id])
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId, branchId, status])
+}
+
+model DeliveryBoySettlement {
+  id                    String          @id @default(uuid())
+  tenantId              String
+  branchId              String
+  settlementNumber      String
+  riderName             String
+  totalOrdersDelivered  Int
+  totalCodCollected     Decimal         @db.Decimal(15, 2)
+  settledAt             DateTime        @default(now())
+  syncVersion           BigInt          @default(1)
+
+  deliveryOrders        DeliveryOrder[]
+
+  @@unique([tenantId, settlementNumber])
+  @@index([tenantId, branchId])
+}
+
+model Customer {
+  id                   String                @id @default(uuid())
+  tenantId             String
+  phone                String
+  name                 String
+  email                String?
+  gstin                String?
+  address              String?
+  loyaltyTier          LoyaltyTierEnum       @default(SILVER)
+  loyaltyPointsBalance Decimal               @default(0) @db.Decimal(15, 2)
+  khataCreditLimit     Decimal               @default(0) @db.Decimal(15, 2)
+  khataCurrentBalance  Decimal               @default(0) @db.Decimal(15, 2)
+  rationCycleDayStart  Int?                  // 1 to 10 for monthly ration shoppers
+  rfmScore             Decimal?              @db.Decimal(5, 2)
+  isActive             Boolean               @default(true)
+  syncVersion          BigInt                @default(1)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  invoices             PosInvoice[]
+  creditNoteSlips      CreditNoteSlip[]
+  deliveryOrders       DeliveryOrder[]
+  loyaltyLedgers       LoyaltyLedger[]
+  khataLedgers         CustomerKhataLedger[]
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, syncVersion])
+}
+
+model LoyaltyLedger {
+  id               String             @id @default(uuid())
+  customerId       String
+  invoiceId        String?
+  transactionType  LoyaltyTxnTypeEnum
+  points           Decimal            @db.Decimal(15, 2)
+  balanceAfter     Decimal            @db.Decimal(15, 2)
+  otpVerified      Boolean            @default(false)
+  notes            String?
+  createdAt        DateTime           @default(now())
+
+  customer         Customer           @relation(fields: [customerId], references: [id])
+  invoice          PosInvoice?        @relation(fields: [invoiceId], references: [id])
+
+  @@index([customerId])
+}
+
+model CustomerKhataLedger {
+  id                       String           @id @default(uuid())
+  customerId               String
+  invoiceId                String?
+  txnType                  KhataTxnTypeEnum
+  amount                   Decimal          @db.Decimal(15, 2)
+  runningBalance           Decimal          @db.Decimal(15, 2)
+  paymentMethod            String?
+  receiptRef               String?
+  whatsAppStatementSentAt  DateTime?
+  notes                    String?
+  createdAt                DateTime         @default(now())
+
+  customer                 Customer         @relation(fields: [customerId], references: [id])
+  invoice                  PosInvoice?      @relation(fields: [invoiceId], references: [id])
+
+  @@index([customerId])
+}
+
+model GiftCard {
+  id              String    @id @default(uuid())
+  tenantId        String
+  cardBarcode     String
+  pinHash         String?
+  originalValue   Decimal   @db.Decimal(15, 2)
+  currentBalance  Decimal   @db.Decimal(15, 2)
+  expiryDate      DateTime
+  isActive        Boolean   @default(true)
+  syncVersion     BigInt    @default(1)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, cardBarcode])
+  @@index([tenantId, isActive])
+}
+
+model AccountGroup {
+  id          String          @id @default(uuid())
+  tenantId    String
+  groupName   String
+  groupType   AccountTypeEnum
+  createdAt   DateTime        @default(now())
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  accounts    LedgerAccount[]
+
+  @@unique([tenantId, groupName])
+}
+
+model LedgerAccount {
+  id              String               @id @default(uuid())
+  tenantId        String
+  groupId         String
+  code            String
+  accountName     String
+  openingBalance  Decimal              @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal              @default(0) @db.Decimal(15, 2)
+  syncVersion     BigInt               @default(1)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  group           AccountGroup         @relation(fields: [groupId], references: [id])
+  voucherLines    JournalVoucherLine[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, groupId])
+}
+
+model JournalVoucher {
+  id               String               @id @default(uuid())
+  tenantId         String
+  branchId         String
+  voucherNumber    String
+  voucherDate      DateTime             @default(now())
+  voucherType      VoucherTypeEnum      @default(POS_DAY_CLOSE)
+  narration        String
+  isTallyExported  Boolean              @default(false)
+  tallyExportedAt  DateTime?
+  syncVersion      BigInt               @default(1)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  branch           Branch               @relation(fields: [branchId], references: [id])
+  lines            JournalVoucherLine[]
+
+  @@unique([tenantId, voucherNumber])
+  @@index([tenantId, branchId, voucherDate])
+}
+
+model JournalVoucherLine {
+  id               String         @id @default(uuid())
+  voucherId        String
+  ledgerAccountId  String
+  debitAmount      Decimal        @default(0) @db.Decimal(15, 2)
+  creditAmount     Decimal        @default(0) @db.Decimal(15, 2)
+  narration        String?
+
+  voucher          JournalVoucher @relation(fields: [voucherId], references: [id])
+  ledgerAccount    LedgerAccount  @relation(fields: [ledgerAccountId], references: [id])
+
+  @@index([voucherId])
+}
+
+model GstReturnFilingLog {
+  id            String    @id @default(uuid())
+  tenantId      String
+  returnType    String    // "GSTR1", "GSTR2B", "GSTR3B"
+  filingPeriod  String    // e.g. "2026-10"
+  totalTaxable  Decimal   @db.Decimal(15, 2)
+  totalTax      Decimal   @db.Decimal(15, 2)
+  status        String    // "PREPARED", "RECONCILED", "FILED"
+  arnNumber     String?
+  filedAt       DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@unique([tenantId, returnType, filingPeriod])
+}
+
+model EInvoiceLog {
+  id                String     @id @default(uuid())
+  invoiceId         String     @unique
+  irn               String     @unique
+  ackNo             String
+  ackDate           DateTime
+  signedInvoiceText String     @db.Text
+  signedQrCodeText  String     @db.Text
+  status            String     @default("ACTIVE")
+  createdAt         DateTime   @default(now())
+
+  invoice           PosInvoice @relation(fields: [invoiceId], references: [id])
+}
+
+model StaffAttendance {
+  id                String               @id @default(uuid())
+  tenantId          String
+  branchId          String
+  userId            String
+  workDate          DateTime             @db.Date
+  checkInTime       DateTime?
+  checkOutTime      DateTime?
+  biometricVerified Boolean              @default(false)
+  selfiePhotoUrl    String?
+  status            AttendanceStatusEnum @default(PRESENT)
+  createdAt         DateTime             @default(now())
+
+  branch            Branch               @relation(fields: [branchId], references: [id])
+  user              User                 @relation(fields: [userId], references: [id])
+
+  @@unique([userId, workDate])
+  @@index([tenantId, branchId, workDate])
+}
+
+model StaffAdvanceAndGroceryKhata {
+  id               String                @id @default(uuid())
+  tenantId         String
+  branchId         String
+  userId           String
+  txnType          StaffKhataTxnTypeEnum
+  amount           Decimal               @db.Decimal(15, 2)
+  invoiceId        String?
+  approvedByUserId String?
+  notes            String?
+  createdAt        DateTime              @default(now())
+
+  user             User                  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model MonthlyPayroll {
+  id                      String        @id @default(uuid())
+  tenantId                String
+  branchId                String
+  userId                  String
+  shiftId                 String?
+  monthYear               String        // e.g. "2026-10"
+  baseSalary              Decimal       @db.Decimal(15, 2)
+  overtimePay             Decimal       @default(0) @db.Decimal(15, 2)
+  salesCommission         Decimal       @default(0) @db.Decimal(15, 2)
+  leaveDeductions         Decimal       @default(0) @db.Decimal(15, 2)
+  advanceDeductions       Decimal       @default(0) @db.Decimal(15, 2)
+  groceryKhataDeductions  Decimal       @default(0) @db.Decimal(15, 2)
+  posShortageDeductions   Decimal       @default(0) @db.Decimal(15, 2)
+  netPaidSalary           Decimal       @db.Decimal(15, 2)
+  paidAt                  DateTime?
+  paymentRef              String?
+  createdAt               DateTime      @default(now())
+
+  branch                  Branch        @relation(fields: [branchId], references: [id])
+  user                    User          @relation(fields: [userId], references: [id])
+  shift                   CashierShift? @relation(fields: [shiftId], references: [id])
+
+  @@unique([userId, monthYear])
+  @@index([tenantId, branchId, monthYear])
+}

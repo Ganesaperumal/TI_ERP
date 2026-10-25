@@ -1,0 +1,340 @@
+// 01_core_tenant_branch.prisma
+// Core Multi-Tenant, SaaS Licensing, Branch Hierarchy, Bins, RBAC, Terminals & Sync Engine
+
+enum TopologyModeEnum {
+  SINGLE_STORE
+  MULTI_BRANCH
+}
+
+enum GstRegimeEnum {
+  REGULAR
+  COMPOSITION
+}
+
+enum BranchTypeEnum {
+  HEAD_OFFICE
+  WAREHOUSE
+  RETAIL_STORE
+}
+
+enum StorageBinTypeEnum {
+  GODOWN
+  SHOP_FLOOR
+  DAMAGED_RETURNABLE
+  DAMAGED_SCRAP
+  CONSIGNMENT
+}
+
+enum ShiftStatusEnum {
+  OPEN
+  CLOSED
+  Z_REPORTED
+}
+
+enum AuditExceptionTypeEnum {
+  LINE_VOID
+  CART_CANCEL
+  MANUAL_PRICE_OVERRIDE
+  DUPLICATE_BILL_PRINT
+  NO_SALE_DRAWER_KICK
+  NEGATIVE_STOCK_OVERRIDE
+}
+
+enum SyncStatusEnum {
+  PENDING
+  SYNCED
+  FAILED
+  CONFLICT
+}
+
+enum SyncOperationEnum {
+  INSERT
+  UPDATE
+  DELETE
+}
+
+model SaaSLicense {
+  id             String    @id @default(uuid())
+  licenseKey     String    @unique
+  customerName   String
+  planTier       String    @default("ENTERPRISE")
+  maxBranches    Int       @default(1)
+  maxTerminals   Int       @default(5)
+  activeModules  Json      @default("{}")
+  amcExpiryDate  DateTime
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenants        Tenant[]
+}
+
+model Tenant {
+  id              String            @id @default(uuid())
+  licenseId       String?
+  code            String            @unique
+  name            String
+  legalTradeName  String?
+  primaryContact  String
+  email           String?
+  gstRegime       GstRegimeEnum     @default(REGULAR)
+  topology        TopologyModeEnum  @default(SINGLE_STORE)
+  byokAiConfig    Json?
+  syncVersion     BigInt            @default(1)
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  license         SaaSLicense?      @relation(fields: [licenseId], references: [id])
+  branches        Branch[]
+  roles           Role[]
+  users           User[]
+  auditLogs       AuditExceptionLog[]
+  syncOutbox      SyncOutbox[]
+  syncInbox       SyncInbox[]
+  categories      Category[]
+  brands          Brand[]
+  hsnMasters      HsnTaxMaster[]
+  products        Product[]
+  suppliers       Supplier[]
+  customers       Customer[]
+  accountGroups   AccountGroup[]
+  ledgerAccounts  LedgerAccount[]
+  promotions      PromotionRule[]
+
+  @@index([syncVersion])
+}
+
+model Branch {
+  id                 String          @id @default(uuid())
+  tenantId           String
+  code               String
+  name               String
+  branchType         BranchTypeEnum  @default(RETAIL_STORE)
+  gstin              String?
+  address            String?
+  city               String?
+  stateCode          String?         // 2-digit GST state code e.g. "33" for Tamil Nadu
+  pincode            String?
+  phone              String?
+  regionalLanguage   String          @default("en-IN")
+  localServerIp      String?
+  branchSettings     Json?           // Plug-and-play StoreConfig overrides
+  syncVersion        BigInt          @default(1)
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  tenant             Tenant          @relation(fields: [tenantId], references: [id])
+  bins               StorageBin[]
+  posTerminals       PosTerminal[]
+  cashierShifts      CashierShift[]
+  auditLogs          AuditExceptionLog[]
+  inventoryBatches   InventoryBatch[]
+  binStockBalances   BinStockBalance[]
+  stockLedgers       StockLedger[]
+  repackingJobs      RepackingJob[]
+  transfersDispatched StockTransfer[] @relation("TransfersDispatched")
+  transfersReceived   StockTransfer[] @relation("TransfersReceived")
+  cycleCountSessions CycleCountSession[]
+  purchaseOrders     PurchaseOrder[]
+  goodsReceiptNotes  GoodsReceiptNote[]
+  purchaseReturns    PurchaseReturnDebitNote[]
+  posInvoices        PosInvoice[]
+  salesReturns       SalesReturn[]
+  journalVouchers    JournalVoucher[]
+  staffAttendances   StaffAttendance[]
+  monthlyPayrolls    MonthlyPayroll[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, syncVersion])
+}
+
+model StorageBin {
+  id          String             @id @default(uuid())
+  tenantId    String
+  branchId    String
+  binCode     String             // e.g. "GODOWN-A1", "FLOOR-RACK-03"
+  binType     StorageBinTypeEnum @default(SHOP_FLOOR)
+  aisle       String?
+  rack        String?
+  shelf       String?
+  description String?
+  syncVersion BigInt             @default(1)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  branch      Branch             @relation(fields: [branchId], references: [id])
+  stockBalances BinStockBalance[]
+  stockLedgers  StockLedger[]
+
+  @@unique([branchId, binCode])
+  @@index([tenantId, branchId])
+}
+
+model Role {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  roleName           String
+  permissions        Json      @default("[]")
+  maskCostAndMargin  Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant             Tenant    @relation(fields: [tenantId], references: [id])
+  users              User[]
+
+  @@unique([tenantId, roleName])
+}
+
+model User {
+  id                      String              @id @default(uuid())
+  tenantId                String
+  branchId                String?
+  roleId                  String
+  username                String
+  passwordHash            String
+  fullName                String
+  phone                   String?
+  email                   String?
+  supervisorPinEncrypted  String?
+  barcodeBadgeHash        String?
+  salesmanCommissionRate  Decimal             @default(0) @db.Decimal(5, 2)
+  isActive                Boolean             @default(true)
+  syncVersion             BigInt              @default(1)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  tenant                  Tenant              @relation(fields: [tenantId], references: [id])
+  role                    Role                @relation(fields: [roleId], references: [id])
+  cashierShifts           CashierShift[]
+  auditLogsCashier        AuditExceptionLog[] @relation("CashierAuditLogs")
+  auditLogsSupervisor     AuditExceptionLog[] @relation("SupervisorAuditLogs")
+  salesInvoices           PosInvoice[]        @relation("SalesmanInvoices")
+  attendances             StaffAttendance[]
+  advancesAndKhatas       StaffAdvanceAndGroceryKhata[]
+  monthlyPayrolls         MonthlyPayroll[]
+
+  @@unique([tenantId, username])
+  @@index([tenantId, branchId])
+}
+
+model PosTerminal {
+  id             String         @id @default(uuid())
+  tenantId       String
+  branchId       String
+  terminalCode   String         // e.g. "TERM-01"
+  macAddress     String?
+  hardwareLocked Boolean        @default(true)
+  printerIp      String?
+  scalePort      String?
+  edcTerminalId  String?
+  isActive       Boolean        @default(true)
+  syncVersion    BigInt         @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  branch         Branch         @relation(fields: [branchId], references: [id])
+  shifts         CashierShift[]
+  invoices       PosInvoice[]
+  parkedBills    PosParkedBill[]
+
+  @@unique([branchId, terminalCode])
+  @@index([tenantId, branchId])
+}
+
+model CashierShift {
+  id                              String          @id @default(uuid())
+  tenantId                        String
+  branchId                        String
+  terminalId                      String
+  cashierId                       String
+  shiftNumber                     Int
+  status                          ShiftStatusEnum @default(OPEN)
+  startTime                       DateTime        @default(now())
+  endTime                         DateTime?
+  openingFloat                    Decimal         @db.Decimal(15, 2)
+  midDaySafeDrops                 Decimal         @default(0) @db.Decimal(15, 2)
+  blindCloseEnabled               Boolean         @default(true)
+  expectedCashSystem              Decimal?        @db.Decimal(15, 2)
+  physicalCashCounted             Decimal?        @db.Decimal(15, 2)
+  denominationBreakdown           Json?           // e.g. {"2000": 0, "500": 20, "200": 10, ...}
+  shortageOrExcessAmount          Decimal?        @db.Decimal(15, 2)
+  shortageApprovedBySupervisorId String?
+  zReportNumber                   String?
+  zReportSummary                  Json?
+  syncVersion                     BigInt          @default(1)
+  createdAt                       DateTime        @default(now())
+  updatedAt                       DateTime        @updatedAt
+
+  branch                          Branch          @relation(fields: [branchId], references: [id])
+  terminal                        PosTerminal     @relation(fields: [terminalId], references: [id])
+  cashier                         User            @relation(fields: [cashierId], references: [id])
+  invoices                        PosInvoice[]
+  payrolls                        MonthlyPayroll[]
+
+  @@index([tenantId, branchId, status])
+}
+
+model AuditExceptionLog {
+  id              String                 @id @default(uuid())
+  tenantId        String
+  branchId        String
+  terminalId      String?
+  cashierId       String
+  supervisorId    String?
+  exceptionType   AuditExceptionTypeEnum
+  referenceEntity String?                // e.g. "PosInvoice", "PosInvoiceLine", "Drawer"
+  referenceId     String?
+  reason          String?
+  metadata        Json?
+  timestamp       DateTime               @default(now())
+
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  branch          Branch                 @relation(fields: [branchId], references: [id])
+  cashier         User                   @relation("CashierAuditLogs", fields: [cashierId], references: [id])
+  supervisor      User?                  @relation("SupervisorAuditLogs", fields: [supervisorId], references: [id])
+
+  @@index([tenantId, branchId, timestamp])
+}
+
+model SyncOutbox {
+  id           String            @id @default(uuid())
+  tenantId     String
+  branchId     String
+  entityName   String
+  recordId     String
+  operation    SyncOperationEnum
+  payload      Json
+  syncVersion  BigInt
+  status       SyncStatusEnum    @default(PENDING)
+  retryCount   Int               @default(0)
+  errorMessage String?
+  createdAt    DateTime          @default(now())
+  syncedAt     DateTime?
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, syncVersion])
+}
+
+model SyncInbox {
+  id             String            @id @default(uuid())
+  tenantId       String
+  sourceBranchId String
+  entityName     String
+  recordId       String
+  operation      SyncOperationEnum
+  payload        Json
+  syncVersion    BigInt
+  status         SyncStatusEnum    @default(PENDING)
+  appliedAt      DateTime?
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+
+  tenant         Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, syncVersion])
+}

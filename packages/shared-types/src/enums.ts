@@ -1,0 +1,140 @@
+// Master Domain Enums for TI-ERP
+
+export enum TopologyMode {
+  SINGLE_STORE = 'SINGLE_STORE',
+  MULTI_BRANCH = 'MULTI_BRANCH',
+}
+
+export enum StoreRole {
+  LOCAL_STORE = 'LOCAL_STORE',
+  CLOUD_HO = 'CLOUD_HO',
+  CENTRAL_WAREHOUSE = 'CENTRAL_WAREHOUSE',
+}
+
+export enum BranchType {
+  HEAD_OFFICE = 'HEAD_OFFICE',
+  WAREHOUSE = 'WAREHOUSE',
+  RETAIL_STORE = 'RETAIL_STORE',
+}
+
+export enum GstRegime {
+  REGULAR = 'REGULAR',
+  COMPOSITION = 'COMPOSITION',
+}
+
+export enum StorageBinType {
+  GODOWN = 'GODOWN',
+  SHOP_FLOOR = 'SHOP_FLOOR',
+  DAMAGED_RETURNABLE = 'DAMAGED_RETURNABLE',
+  DAMAGED_SCRAP = 'DAMAGED_SCRAP',
+  CONSIGNMENT = 'CONSIGNMENT',
+}
+
+export enum ProductType {
+  STANDARD_FMCG = 'STANDARD_FMCG',
+  WEIGHED_LOOSE = 'WEIGHED_LOOSE',
+  REPACKED_BULK = 'REPACKED_BULK',
+  COMBO_KIT = 'COMBO_KIT',
+  VARIANT_MATRIX = 'VARIANT_MATRIX',
+}
+
+export enum BatchTrackingMode {
+  STORE_DEFAULT = 'STORE_DEFAULT',
+  POPUP_ON_MRP_DIFF = 'POPUP_ON_MRP_DIFF',
+  AUTO_FEFO = 'AUTO_FEFO',
+}
+
+export enum NegativeStockRule {
+  STORE_DEFAULT = 'STORE_DEFAULT',
+  ALLOW = 'ALLOW',
+  WARN_PIN = 'WARN_PIN',
+  BLOCK = 'BLOCK',
+}
+
+export enum GrnMode {
+  FAST_DIRECT = 'FAST_DIRECT',
+  THREE_WAY_MATCH = 'THREE_WAY_MATCH',
+}
+
+export enum PosInvoiceType {
+  WALK_IN_RETAIL = 'WALK_IN_RETAIL',
+  WHOLESALE_B2B = 'WHOLESALE_B2B',
+  HOME_DELIVERY = 'HOME_DELIVERY',
+  MPOS_QUEUE_TOKEN = 'MPOS_QUEUE_TOKEN',
+}
+
+export enum PaymentMethod {
+  CASH = 'CASH',
+  UPI = 'UPI',
+  CARD = 'CARD',
+  SODEXO = 'SODEXO',
+  CREDIT_NOTE_SLIP = 'CREDIT_NOTE_SLIP',
+  LOYALTY_POINTS = 'LOYALTY_POINTS',
+  CUSTOMER_KHATA = 'CUSTOMER_KHATA',
+  GIFT_CARD = 'GIFT_CARD',
+}
+
+export enum PromotionType {
+  BOGO = 'BOGO',
+  MIX_AND_MATCH = 'MIX_AND_MATCH',
+  CART_SLAB_UPSELL = 'CART_SLAB_UPSELL',
+  HAPPY_HOUR = 'HAPPY_HOUR',
+  COUPON_CODE = 'COUPON_CODE',
+}
+
+export enum LoyaltyTier {
+  SILVER = 'SILVER',
+  GOLD = 'GOLD',
+  VIP = 'VIP',
+}
+
+export enum SyncStatus {
+  PENDING = 'PENDING',
+  SYNCED = 'SYNCED',
+  FAILED = 'FAILED',
+  CONFLICT = 'CONFLICT',
+}
+
+export enum SyncOperation {
+  INSERT = 'INSERT',
+  UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
+}
+
+export enum AuditExceptionType {
+  LINE_VOID = 'LINE_VOID',
+  CART_CANCEL = 'CART_CANCEL',
+  MANUAL_PRICE_OVERRIDE = 'MANUAL_PRICE_OVERRIDE',
+  DUPLICATE_BILL_PRINT = 'DUPLICATE_BILL_PRINT',
+  NO_SALE_DRAWER_KICK = 'NO_SALE_DRAWER_KICK',
+  NEGATIVE_STOCK_OVERRIDE = 'NEGATIVE_STOCK_OVERRIDE',
+}
+
+export enum AiProvider {
+  OPENAI = 'OPENAI',
+  GEMINI = 'GEMINI',
+  CLAUDE = 'CLAUDE',
+  OLLAMA = 'OLLAMA',
+}
+
+export enum AccountType {
+  ASSET = 'ASSET',
+  LIABILITY = 'LIABILITY',
+  EQUITY = 'EQUITY',
+  INCOME = 'INCOME',
+  EXPENSE = 'EXPENSE',
+}
+
+export enum ShiftStatus {
+  OPEN = 'OPEN',
+  CLOSED = 'CLOSED',
+  Z_REPORTED = 'Z_REPORTED',
+}
+
+export enum DeliveryStatus {
+  PICK_LIST_GENERATED = 'PICK_LIST_GENERATED',
+  PACKED = 'PACKED',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  RETURNED = 'RETURNED',
+}

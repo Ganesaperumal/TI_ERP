@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  local-postgres:
+    image: postgres:16-alpine
+    container_name: tierp-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tierp
+      POSTGRES_PASSWORD: tierp_secure_pass
+      POSTGRES_DB: tierp_local_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tierp -d tierp_local_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  local-redis:
+    image: redis:7-alpine
+    container_name: tierp-local-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - local_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  local-api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: tierp-local-api
+    restart: unless-stopped
+    depends_on:
+      local-postgres:
+        condition: service_healthy
+      local-redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://tierp:tierp_secure_pass@local-postgres:5432/tierp_local_db?schema=public
+      REDIS_URL: redis://local-redis:6379
+      TOPOLOGY_MODE: SINGLE_STORE
+      STORE_ROLE: LOCAL_STORE
+    ports:
+      - "4000:4000"
+
+volumes:
+  local_pgdata:
+  local_redisdata:

@@ -1,0 +1,655 @@
+// 02_inventory_procurement.prisma
+// Products, Multi-UOM, Barcode Aliases, Batches/MRP, Repacking, Combos, Stock Ledger & Procurement
+
+enum ProductTypeEnum {
+  STANDARD_FMCG
+  WEIGHED_LOOSE
+  REPACKED_BULK
+  COMBO_KIT
+  VARIANT_MATRIX
+}
+
+enum BatchTrackingModeEnum {
+  STORE_DEFAULT
+  POPUP_ON_MRP_DIFF
+  AUTO_FEFO
+}
+
+enum NegativeStockRuleEnum {
+  STORE_DEFAULT
+  ALLOW
+  WARN_PIN
+  BLOCK
+}
+
+enum ComboModeEnum {
+  PRE_PACKED
+  DYNAMIC_POS
+}
+
+enum StockMovementTypeEnum {
+  INWARD_GRN
+  POS_SALE
+  SALES_RETURN
+  INTER_BRANCH_DISPATCH
+  INTER_BRANCH_RECEIVE
+  REPACK_BULK_CONSUMPTION
+  REPACK_RETAIL_PRODUCTION
+  CYCLE_COUNT_ADJUSTMENT
+  DAMAGE_WRITE_OFF
+  CONSIGNMENT_RETURN
+}
+
+enum StockTransferStatusEnum {
+  INDENTED
+  APPROVED
+  DISPATCHED
+  IN_TRANSIT
+  RECEIVED
+  RECEIVED_WITH_DISCREPANCY
+  CANCELLED
+}
+
+enum CycleCountStatusEnum {
+  IN_PROGRESS
+  COMPLETED_PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum PoStatusEnum {
+  DRAFT
+  APPROVED
+  SENT_TO_VENDOR
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum GrnModeEnum {
+  FAST_DIRECT
+  THREE_WAY_MATCH
+}
+
+enum GrnStatusEnum {
+  DRAFT
+  VERIFIED
+  COMPLETED
+  CANCELLED
+}
+
+enum DebitNoteStatusEnum {
+  DRAFT
+  ISSUED
+  SETTLED
+  CANCELLED
+}
+
+enum ConsignmentSettlementStatusEnum {
+  PENDING
+  SETTLED
+}
+
+model Category {
+  id               String      @id @default(uuid())
+  tenantId         String
+  code             String
+  name             String
+  parentCategoryId String?
+  syncVersion      BigInt      @default(1)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  tenant           Tenant      @relation(fields: [tenantId], references: [id])
+  parentCategory   Category?   @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  subCategories    Category[]  @relation("CategoryHierarchy")
+  products         Product[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, syncVersion])
+}
+
+model Brand {
+  id          String      @id @default(uuid())
+  tenantId    String
+  code        String
+  name        String
+  syncVersion BigInt      @default(1)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  products    Product[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, syncVersion])
+}
+
+model HsnTaxMaster {
+  id          String         @id @default(uuid())
+  tenantId    String
+  hsnCode     String
+  description String?
+  cgstRate    Decimal        @default(0) @db.Decimal(5, 2)
+  sgstRate    Decimal        @default(0) @db.Decimal(5, 2)
+  igstRate    Decimal        @default(0) @db.Decimal(5, 2)
+  cessRate    Decimal        @default(0) @db.Decimal(5, 2)
+  cessPerUnit Decimal        @default(0) @db.Decimal(10, 2)
+  syncVersion BigInt         @default(1)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  products    Product[]
+  grnLines    GrnLineItem[]
+  invoiceLines PosInvoiceLine[]
+
+  @@unique([tenantId, hsnCode])
+  @@index([tenantId, syncVersion])
+}
+
+model Product {
+  id                  String                @id @default(uuid())
+  tenantId            String
+  skuCode             String
+  nameEn              String
+  nameRegional        String?
+  shortPluCode        String?               // 3-digit rapid PLU lookup
+  categoryId          String?
+  brandId             String?
+  hsnId               String?
+  productType         ProductTypeEnum       @default(STANDARD_FMCG)
+  baseUom             String                @default("PCS") // PCS, KG, PACK
+  batchTrackingMode   BatchTrackingModeEnum @default(STORE_DEFAULT)
+  negativeStockRule   NegativeStockRuleEnum @default(STORE_DEFAULT)
+  isConsignment       Boolean               @default(false)
+  minStock            Decimal               @default(0) @db.Decimal(15, 4)
+  maxStock            Decimal               @default(0) @db.Decimal(15, 4)
+  reorderVelocityDays Int                   @default(7)
+  isActive            Boolean               @default(true)
+  syncVersion         BigInt                @default(1)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  tenant              Tenant                @relation(fields: [tenantId], references: [id])
+  category            Category?             @relation(fields: [categoryId], references: [id])
+  brand               Brand?                @relation(fields: [brandId], references: [id])
+  hsn                 HsnTaxMaster?         @relation(fields: [hsnId], references: [id])
+
+  barcodes            ProductBarcode[]
+  uomConversions      ProductUomConversion[]
+  variants            ProductVariant[]
+  comboAsParent       ComboBomItem[]        @relation("ParentCombo")
+  comboAsChild        ComboBomItem[]        @relation("ChildComboItem")
+  batches             InventoryBatch[]
+  binStockBalances    BinStockBalance[]
+  stockLedgers        StockLedger[]
+  repackBulkJobs      RepackingJob[]        @relation("BulkParentProduct")
+  repackRetailJobs    RepackingJob[]        @relation("RetailChildProduct")
+  transferItems       StockTransferItem[]
+  cycleCountItems     CycleCountItem[]
+  poItems             PurchaseOrderItem[]
+  grnLines            GrnLineItem[]
+  debitNoteLines      PurchaseReturnDebitNoteLine[]
+  invoiceLines        PosInvoiceLine[]
+
+  @@unique([tenantId, skuCode])
+  @@index([tenantId, shortPluCode])
+  @@index([tenantId, syncVersion])
+}
+
+model ProductBarcode {
+  id          String    @id @default(uuid())
+  tenantId    String
+  productId   String
+  uomId       String?
+  batchId     String?
+  barcode     String    // EAN-13, UPC, Code128, Internal
+  isPrimary   Boolean   @default(false)
+  syncVersion BigInt    @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, barcode])
+  @@index([tenantId, productId])
+}
+
+model ProductUomConversion {
+  id                String    @id @default(uuid())
+  tenantId          String
+  productId         String
+  uomName           String    // e.g. "BOX", "CARTON", "PACK"
+  conversionFactor  Decimal   @db.Decimal(15, 4) // e.g., 24.0000 (1 Box = 24 PCS)
+  barcode           String?
+  retailPrice       Decimal?  @db.Decimal(15, 2)
+  wholesalePrice    Decimal?  @db.Decimal(15, 2)
+  syncVersion       BigInt    @default(1)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  product           Product   @relation(fields: [productId], references: [id])
+
+  @@unique([productId, uomName])
+  @@index([tenantId, productId])
+}
+
+model ProductVariant {
+  id          String    @id @default(uuid())
+  tenantId    String
+  productId   String
+  variantSku  String
+  size        String?
+  color       String?
+  style       String?
+  barcode     String?
+  syncVersion BigInt    @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, variantSku])
+  @@index([tenantId, productId])
+}
+
+model ComboBomItem {
+  id                    String        @id @default(uuid())
+  tenantId              String
+  parentComboProductId  String
+  childProductId        String
+  comboMode             ComboModeEnum @default(PRE_PACKED)
+  quantityRequired      Decimal       @db.Decimal(15, 4)
+  priceApportionmentPct Decimal       @default(100) @db.Decimal(5, 2)
+  syncVersion           BigInt        @default(1)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  parentProduct         Product       @relation("ParentCombo", fields: [parentComboProductId], references: [id])
+  childProduct          Product       @relation("ChildComboItem", fields: [childProductId], references: [id])
+
+  @@index([tenantId, parentComboProductId])
+}
+
+model InventoryBatch {
+  id                    String        @id @default(uuid())
+  tenantId              String
+  branchId              String
+  productId             String
+  batchNumber           String
+  expiryDate            DateTime?
+  mrp                   Decimal       @db.Decimal(15, 2)
+  purchaseRate          Decimal       @db.Decimal(15, 4)
+  netLandingCost        Decimal       @db.Decimal(15, 4)
+  retailSellingPrice    Decimal       @db.Decimal(15, 2)
+  wholesalePriceTier1   Decimal?      @db.Decimal(15, 2)
+  wholesalePriceTier2   Decimal?      @db.Decimal(15, 2)
+  clearanceDiscountPct  Decimal       @default(0) @db.Decimal(5, 2)
+  isNearExpiryClearance Boolean       @default(false)
+  syncVersion           BigInt        @default(1)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  branch                Branch        @relation(fields: [branchId], references: [id])
+  product               Product       @relation(fields: [productId], references: [id])
+
+  stockBalances         BinStockBalance[]
+  stockLedgers          StockLedger[]
+  repackBulkJobs        RepackingJob[] @relation("BulkConsumedBatch")
+  repackRetailJobs      RepackingJob[] @relation("RetailProducedBatch")
+  transferItems         StockTransferItem[]
+  cycleCountItems       CycleCountItem[]
+  grnLines              GrnLineItem[]
+  invoiceLines          PosInvoiceLine[]
+
+  @@unique([branchId, productId, batchNumber])
+  @@index([tenantId, branchId, productId])
+  @@index([expiryDate])
+}
+
+model BinStockBalance {
+  id          String         @id @default(uuid())
+  tenantId    String
+  branchId    String
+  binId       String
+  productId   String
+  batchId     String
+  quantity    Decimal        @db.Decimal(15, 4)
+  syncVersion BigInt         @default(1)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  branch      Branch         @relation(fields: [branchId], references: [id])
+  bin         StorageBin     @relation(fields: [binId], references: [id])
+  product     Product        @relation(fields: [productId], references: [id])
+  batch       InventoryBatch @relation(fields: [batchId], references: [id])
+
+  @@unique([branchId, binId, batchId])
+  @@index([tenantId, branchId, productId])
+}
+
+model StockLedger {
+  id              String                @id @default(uuid())
+  tenantId        String
+  branchId        String
+  binId           String
+  productId       String
+  batchId         String
+  movementType    StockMovementTypeEnum
+  quantityChange  Decimal               @db.Decimal(15, 4) // Positive for inward, negative for outward
+  runningBalance  Decimal               @db.Decimal(15, 4)
+  referenceType   String                // "GRN", "POS_INVOICE", "STOCK_TRANSFER", "CYCLE_COUNT"
+  referenceId     String
+  unitCost        Decimal               @db.Decimal(15, 4)
+  notes           String?
+  syncVersion     BigInt                @default(1)
+  createdAt       DateTime              @default(now())
+
+  branch          Branch                @relation(fields: [branchId], references: [id])
+  bin             StorageBin            @relation(fields: [binId], references: [id])
+  product         Product               @relation(fields: [productId], references: [id])
+  batch           InventoryBatch        @relation(fields: [batchId], references: [id])
+
+  @@index([tenantId, branchId, productId, createdAt])
+  @@index([referenceType, referenceId])
+}
+
+model RepackingJob {
+  id                     String         @id @default(uuid())
+  tenantId               String
+  branchId               String
+  jobNumber              String
+  bulkParentProductId    String
+  bulkConsumedBatchId    String
+  bulkQtyConsumed        Decimal        @db.Decimal(15, 4)
+  retailChildProductId   String
+  retailProducedBatchId  String
+  retailPacksProduced    Decimal        @db.Decimal(15, 4)
+  wastageQty             Decimal        @default(0) @db.Decimal(15, 4)
+  packagingMaterialCost  Decimal        @default(0) @db.Decimal(15, 2)
+  laborAndOverheadCost   Decimal        @default(0) @db.Decimal(15, 2)
+  calculatedUnitCost     Decimal        @db.Decimal(15, 4)
+  syncVersion            BigInt         @default(1)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  branch                 Branch         @relation(fields: [branchId], references: [id])
+  bulkProduct            Product        @relation("BulkParentProduct", fields: [bulkParentProductId], references: [id])
+  bulkBatch              InventoryBatch @relation("BulkConsumedBatch", fields: [bulkConsumedBatchId], references: [id])
+  retailProduct          Product        @relation("RetailChildProduct", fields: [retailChildProductId], references: [id])
+  retailBatch            InventoryBatch @relation("RetailProducedBatch", fields: [retailProducedBatchId], references: [id])
+
+  @@unique([branchId, jobNumber])
+  @@index([tenantId, branchId])
+}
+
+model StockTransfer {
+  id                    String                  @id @default(uuid())
+  tenantId              String
+  transferNumber        String
+  originBranchId        String
+  destinationBranchId   String
+  status                StockTransferStatusEnum @default(INDENTED)
+  eWayBillNo            String?
+  vehicleNo             String?
+  notes                 String?
+  dispatchedAt          DateTime?
+  receivedAt            DateTime?
+  syncVersion           BigInt                  @default(1)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  originBranch          Branch                  @relation("TransfersDispatched", fields: [originBranchId], references: [id])
+  destinationBranch     Branch                  @relation("TransfersReceived", fields: [destinationBranchId], references: [id])
+  items                 StockTransferItem[]
+
+  @@unique([tenantId, transferNumber])
+  @@index([tenantId, originBranchId, status])
+}
+
+model StockTransferItem {
+  id             String         @id @default(uuid())
+  transferId     String
+  productId      String
+  batchId        String
+  dispatchedQty  Decimal        @db.Decimal(15, 4)
+  receivedQty    Decimal        @default(0) @db.Decimal(15, 4)
+  shortageQty    Decimal        @default(0) @db.Decimal(15, 4)
+  damagedQty     Decimal        @default(0) @db.Decimal(15, 4)
+
+  transfer       StockTransfer  @relation(fields: [transferId], references: [id])
+  product        Product        @relation(fields: [productId], references: [id])
+  batch          InventoryBatch @relation(fields: [batchId], references: [id])
+
+  @@index([transferId])
+}
+
+model CycleCountSession {
+  id                 String               @id @default(uuid())
+  tenantId           String
+  branchId           String
+  sessionNumber      String
+  rackOrCategoryZone String
+  status             CycleCountStatusEnum @default(IN_PROGRESS)
+  systemFrozenAt     DateTime             @default(now())
+  completedAt        DateTime?
+  approvedByUserId   String?
+  syncVersion        BigInt               @default(1)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  branch             Branch               @relation(fields: [branchId], references: [id])
+  items              CycleCountItem[]
+
+  @@unique([branchId, sessionNumber])
+  @@index([tenantId, branchId, status])
+}
+
+model CycleCountItem {
+  id                 String            @id @default(uuid())
+  sessionId          String
+  productId          String
+  batchId            String
+  binId              String
+  systemFrozenQty    Decimal           @db.Decimal(15, 4)
+  physicalCountedQty Decimal           @db.Decimal(15, 4)
+  varianceQty        Decimal           @db.Decimal(15, 4)
+  unitCostSnapshot   Decimal           @db.Decimal(15, 4)
+  notes              String?
+
+  session            CycleCountSession @relation(fields: [sessionId], references: [id])
+  product            Product           @relation(fields: [productId], references: [id])
+  batch              InventoryBatch    @relation(fields: [batchId], references: [id])
+
+  @@index([sessionId])
+}
+
+model Supplier {
+  id                   String                    @id @default(uuid())
+  tenantId             String
+  code                 String
+  name                 String
+  legalTradeName       String?
+  gstin                String?
+  pan                  String?
+  contactPerson        String?
+  phone                String
+  email                String?
+  address              String?
+  paymentTermsDays     Int                       @default(30)
+  creditLimit          Decimal                   @default(0) @db.Decimal(15, 2)
+  outstandingBalance   Decimal                   @default(0) @db.Decimal(15, 2)
+  isConsignmentVendor  Boolean                   @default(false)
+  isActive             Boolean                   @default(true)
+  syncVersion          BigInt                    @default(1)
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  tenant               Tenant                    @relation(fields: [tenantId], references: [id])
+  purchaseOrders       PurchaseOrder[]
+  goodsReceiptNotes    GoodsReceiptNote[]
+  debitNotes           PurchaseReturnDebitNote[]
+  consignmentSettlements ConsignmentSettlement[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, syncVersion])
+}
+
+model PurchaseOrder {
+  id              String             @id @default(uuid())
+  tenantId        String
+  branchId        String
+  supplierId      String
+  poNumber        String
+  status          PoStatusEnum       @default(DRAFT)
+  expectedDate    DateTime?
+  totalAmount     Decimal            @db.Decimal(15, 2)
+  notes           String?
+  syncVersion     BigInt             @default(1)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  branch          Branch             @relation(fields: [branchId], references: [id])
+  supplier        Supplier           @relation(fields: [supplierId], references: [id])
+  items           PurchaseOrderItem[]
+  goodsReceipts   GoodsReceiptNote[]
+
+  @@unique([tenantId, poNumber])
+  @@index([tenantId, branchId, status])
+}
+
+model PurchaseOrderItem {
+  id           String        @id @default(uuid())
+  poId         String
+  productId    String
+  orderedQty   Decimal       @db.Decimal(15, 4)
+  receivedQty  Decimal       @default(0) @db.Decimal(15, 4)
+  unitPrice    Decimal       @db.Decimal(15, 4)
+  taxPct       Decimal       @db.Decimal(5, 2)
+  totalAmount  Decimal       @db.Decimal(15, 2)
+
+  po           PurchaseOrder @relation(fields: [poId], references: [id])
+  product      Product       @relation(fields: [productId], references: [id])
+
+  @@index([poId])
+}
+
+model GoodsReceiptNote {
+  id                    String        @id @default(uuid())
+  tenantId              String
+  branchId              String
+  supplierId            String
+  poId                  String?
+  grnNumber             String
+  mode                  GrnModeEnum   @default(FAST_DIRECT)
+  status                GrnStatusEnum @default(COMPLETED)
+  supplierInvoiceNo     String?
+  supplierInvoiceDate   DateTime?
+  aiOcrMetadata         Json?         // Scanned invoice raw bounding boxes and parsed fields
+  subTotal              Decimal       @db.Decimal(15, 2)
+  taxTotal              Decimal       @db.Decimal(15, 2)
+  totalFreightApportion Decimal       @default(0) @db.Decimal(15, 2)
+  netPayable            Decimal       @db.Decimal(15, 2)
+  marginGuardrailPassed Boolean       @default(true)
+  syncVersion           BigInt        @default(1)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  branch                Branch        @relation(fields: [branchId], references: [id])
+  supplier              Supplier      @relation(fields: [supplierId], references: [id])
+  po                    PurchaseOrder? @relation(fields: [poId], references: [id])
+  lineItems             GrnLineItem[]
+
+  @@unique([tenantId, grnNumber])
+  @@index([tenantId, branchId, status])
+}
+
+model GrnLineItem {
+  id                    String         @id @default(uuid())
+  grnId                 String
+  productId             String
+  batchNumber           String
+  expiryDate            DateTime?
+  hsnId                 String?
+  receivedQty           Decimal        @db.Decimal(15, 4)
+  freeSchemeQty         Decimal        @default(0) @db.Decimal(15, 4) // e.g. 10+1 free
+  purchaseRate          Decimal        @db.Decimal(15, 4)
+  tradeDiscountPct      Decimal        @default(0) @db.Decimal(5, 2)
+  cashDiscountPct       Decimal        @default(0) @db.Decimal(5, 2)
+  apportionedFreight    Decimal        @default(0) @db.Decimal(15, 2)
+  taxableAmount         Decimal        @db.Decimal(15, 2)
+  cgstAmount            Decimal        @default(0) @db.Decimal(15, 2)
+  sgstAmount            Decimal        @default(0) @db.Decimal(15, 2)
+  igstAmount            Decimal        @default(0) @db.Decimal(15, 2)
+  netLandingCost        Decimal        @db.Decimal(15, 4) // Computed true landed unit cost
+  targetMrp             Decimal        @db.Decimal(15, 2)
+  retailSellingPrice    Decimal        @db.Decimal(15, 2)
+  marginGuardrailFlag   Boolean        @default(false)    // True if margin is below threshold
+
+  grn                   GoodsReceiptNote @relation(fields: [grnId], references: [id])
+  product               Product          @relation(fields: [productId], references: [id])
+  hsn                   HsnTaxMaster?    @relation(fields: [hsnId], references: [id])
+  batch                 InventoryBatch?  @relation(fields: [batchId], references: [id])
+  batchId               String?
+
+  @@index([grnId])
+}
+
+model PurchaseReturnDebitNote {
+  id               String               @id @default(uuid())
+  tenantId         String
+  branchId         String
+  supplierId       String
+  debitNoteNumber  String
+  status           DebitNoteStatusEnum  @default(ISSUED)
+  reason           String               // DAMAGED, EXPIRED, RATE_DIFFERENCE
+  totalAmount      Decimal              @db.Decimal(15, 2)
+  notes            String?
+  syncVersion      BigInt               @default(1)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  branch           Branch               @relation(fields: [branchId], references: [id])
+  supplier         Supplier             @relation(fields: [supplierId], references: [id])
+  lines            PurchaseReturnDebitNoteLine[]
+
+  @@unique([tenantId, debitNoteNumber])
+  @@index([tenantId, branchId])
+}
+
+model PurchaseReturnDebitNoteLine {
+  id              String                  @id @default(uuid())
+  debitNoteId     String
+  productId       String
+  batchNumber     String
+  returnedQty     Decimal                 @db.Decimal(15, 4)
+  unitCost        Decimal                 @db.Decimal(15, 4)
+  totalAmount     Decimal                 @db.Decimal(15, 2)
+
+  debitNote       PurchaseReturnDebitNote @relation(fields: [debitNoteId], references: [id])
+  product         Product                 @relation(fields: [productId], references: [id])
+
+  @@index([debitNoteId])
+}
+
+model ConsignmentSettlement {
+  id                String                          @id @default(uuid())
+  tenantId          String
+  branchId          String
+  supplierId        String
+  settlementNumber  String
+  periodStart       DateTime
+  periodEnd         DateTime
+  soldQty           Decimal                         @db.Decimal(15, 4)
+  settlementAmount  Decimal                         @db.Decimal(15, 2)
+  status            ConsignmentSettlementStatusEnum @default(PENDING)
+  syncVersion       BigInt                          @default(1)
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
+
+  supplier          Supplier                        @relation(fields: [supplierId], references: [id])
+
+  @@unique([tenantId, settlementNumber])
+  @@index([tenantId, branchId])
+}

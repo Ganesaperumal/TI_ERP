@@ -77,6 +77,16 @@ export const PosBillingScreen: React.FC = () => {
   const [cardTendered, setCardTendered] = useState(0);
   const [creditNoteBarcode, setCreditNoteBarcode] = useState('');
   const [creditNoteAmount, setCreditNoteAmount] = useState(0);
+  const [khataTendered, setKhataTendered] = useState(0);
+  const [khataPin, setKhataPin] = useState('');
+  const [pointsTendered, setPointsTendered] = useState(0);
+  const [redemptionOtp, setRedemptionOtp] = useState('');
+  const [giftCardTendered, setGiftCardTendered] = useState(0);
+  const [giftCardBarcode, setGiftCardBarcode] = useState('');
+
+  // Queue-Buster State
+  const [queueTokenModalOpen, setQueueTokenModalOpen] = useState(false);
+  const [queueTokenInput, setQueueTokenInput] = useState('');
 
   // Supervisor PIN State
   const [supervisorPin, setSupervisorPin] = useState('');
@@ -97,18 +107,26 @@ export const PosBillingScreen: React.FC = () => {
   const amountNeeded = (upsellThreshold - netPayable).toFixed(2);
 
   // Total Paid in Split Modal
-  const totalPaidInModal = cashTendered + upiTendered + cardTendered + creditNoteAmount;
+  const totalPaidInModal =
+    cashTendered +
+    upiTendered +
+    cardTendered +
+    creditNoteAmount +
+    khataTendered +
+    pointsTendered +
+    giftCardTendered;
   const balanceDueInModal = Math.max(0, netPayable - totalPaidInModal);
-  const cashChangeToReturn = cashTendered > (netPayable - (upiTendered + cardTendered + creditNoteAmount))
-    ? Math.max(0, cashTendered - (netPayable - (upiTendered + cardTendered + creditNoteAmount)))
-    : 0;
+  const nonCashTenders =
+    upiTendered + cardTendered + creditNoteAmount + khataTendered + pointsTendered + giftCardTendered;
+  const cashChangeToReturn =
+    cashTendered > netPayable - nonCashTenders ? Math.max(0, cashTendered - (netPayable - nonCashTenders)) : 0;
 
   // Global Keyboard Shortcuts (F1 - F12)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F1') {
         e.preventDefault();
-        alert('Shortcuts Help:\nF1: Help\nF2: Focus Barcode\nF3: Read Scale Weight\nF4: Toggle Wholesale Tier\nF6: Hold/Park Cart\nF7: Recall Held Cart\nF8: Return/Exchange\nF9: Supervisor Override\nF10: Instant Cash\nF12: Split Tenders');
+        alert('Shortcuts Help:\nF1: Help\nF2: Focus Barcode\nF3: Read Scale Weight\nF4: Toggle Wholesale Tier\nF5: Scan Queue Token\nF6: Hold/Park Cart\nF7: Recall Held Cart\nF8: Return/Exchange\nF9: Supervisor Override\nF10: Instant Cash\nF12: Split Tenders');
       } else if (e.key === 'F2') {
         e.preventDefault();
         scanInputRef.current?.focus();
@@ -118,6 +136,9 @@ export const PosBillingScreen: React.FC = () => {
       } else if (e.key === 'F4') {
         e.preventDefault();
         setPriceTier((prev) => (prev === 'RETAIL' ? 'WHOLESALE' : 'RETAIL'));
+      } else if (e.key === 'F5') {
+        e.preventDefault();
+        setQueueTokenModalOpen(true);
       } else if (e.key === 'F6') {
         e.preventDefault();
         setParkModalOpen(true);
@@ -282,6 +303,21 @@ export const PosBillingScreen: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+          <button
+            onClick={() => setQueueTokenModalOpen(true)}
+            style={{
+              padding: '6px 14px',
+              backgroundColor: '#064e3b',
+              color: '#a7f3d0',
+              border: '1px solid #10b981',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '11px',
+            }}
+          >
+            📱 Scan Queue Token [F5]
+          </button>
           <span style={{ color: '#fbbf24', fontSize: '12px' }}>
             Customer: <b>{customerName}</b> ({customerPhone})
           </span>
@@ -633,6 +669,51 @@ export const PosBillingScreen: React.FC = () => {
                   style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '4px', color: '#fff', fontSize: '14px' }}
                 />
               </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#f59e0b' }}>Customer Khata (Credit ₹):</label>
+                <input
+                  type="number"
+                  value={khataTendered}
+                  onChange={(e) => setKhataTendered(Number(e.target.value))}
+                  style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #f59e0b', borderRadius: '4px', color: '#fff', fontSize: '14px' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#10b981' }}>Loyalty Points (1 pt = ₹1):</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="number"
+                    value={pointsTendered}
+                    onChange={(e) => setPointsTendered(Number(e.target.value))}
+                    style={{ flex: 1, padding: '8px', backgroundColor: '#0f172a', border: '1px solid #10b981', borderRadius: '4px', color: '#fff', fontSize: '14px' }}
+                  />
+                  <input
+                    type="password"
+                    placeholder="4-digit OTP"
+                    value={redemptionOtp}
+                    onChange={(e) => setRedemptionOtp(e.target.value)}
+                    style={{ width: '90px', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #10b981', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#ec4899' }}>Prepaid Gift Card (₹):</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="number"
+                    value={giftCardTendered}
+                    onChange={(e) => setGiftCardTendered(Number(e.target.value))}
+                    style={{ flex: 1, padding: '8px', backgroundColor: '#0f172a', border: '1px solid #ec4899', borderRadius: '4px', color: '#fff', fontSize: '14px' }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="GC-Code"
+                    value={giftCardBarcode}
+                    onChange={(e) => setGiftCardBarcode(e.target.value)}
+                    style={{ width: '90px', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #ec4899', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
+                  />
+                </div>
+              </div>
             </div>
 
             <div style={{ backgroundColor: '#0f172a', padding: '14px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #334155' }}>
@@ -872,6 +953,136 @@ export const PosBillingScreen: React.FC = () => {
                 style={{ padding: '8px 20px', backgroundColor: '#f87171', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}
               >
                 Issue Credit Note Slip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUEUE-BUSTER TOKEN RECALL MODAL (F5) */}
+      {queueTokenModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: '#1e293b', padding: '24px', borderRadius: '12px', maxWidth: '450px', width: '100%', border: '2px solid #10b981' }}>
+            <h3 style={{ margin: '0 0 10px', color: '#10b981', fontSize: '18px' }}>
+              📱 Scan Queue-Buster Token (QB-XXXX)
+            </h3>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 16px' }}>
+              Scan or enter the 6-character trolley token generated by the floor queue-buster staff:
+            </p>
+
+            <input
+              type="text"
+              autoFocus
+              placeholder="e.g. QB-4092"
+              value={queueTokenInput}
+              onChange={(e) => setQueueTokenInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && queueTokenInput.trim()) {
+                  setCart([
+                    {
+                      id: `c-qb-1`,
+                      productId: 'p-qb1',
+                      skuCode: 'FMCG-RICE-01',
+                      nameEn: 'India Gate Basmati Rice Feast 5kg',
+                      nameRegional: 'பாசுமதி அரிசி 5கிலோ',
+                      batchNumber: 'IGR-2026',
+                      mrp: 490,
+                      sellingPrice: 460,
+                      quantity: 1,
+                      uom: 'PACK',
+                      discount: 30,
+                      lineTotal: 460,
+                    },
+                    {
+                      id: `c-qb-2`,
+                      productId: 'p-qb2',
+                      skuCode: 'FMCG-OIL-02',
+                      nameEn: 'Fortune Sunlite Sunflower Oil 1L',
+                      nameRegional: 'சூரியகாந்தி எண்ணெய் 1லி',
+                      batchNumber: 'FSO-104',
+                      mrp: 165,
+                      sellingPrice: 145,
+                      quantity: 2,
+                      uom: 'PACK',
+                      discount: 40,
+                      lineTotal: 290,
+                    },
+                  ]);
+                  setCustomerName('Priya N. (Queue Token Customer)');
+                  setCustomerPhone('9840199887');
+                  setReceiptSuccessModal(
+                    `Queue-Buster Cart "${queueTokenInput.toUpperCase()}" loaded into billing screen! Ready for instant payment.`,
+                  );
+                  setQueueTokenModalOpen(false);
+                  setQueueTokenInput('');
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '12px',
+                backgroundColor: '#0f172a',
+                border: '1px solid #10b981',
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                fontFamily: 'monospace',
+                marginBottom: '16px',
+                textAlign: 'center',
+                letterSpacing: '2px',
+              }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setQueueTokenModalOpen(false)}
+                style={{ padding: '8px 16px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setCart([
+                    {
+                      id: `c-qb-1`,
+                      productId: 'p-qb1',
+                      skuCode: 'FMCG-RICE-01',
+                      nameEn: 'India Gate Basmati Rice Feast 5kg',
+                      nameRegional: 'பாசுமதி அரிசி 5கிலோ',
+                      batchNumber: 'IGR-2026',
+                      mrp: 490,
+                      sellingPrice: 460,
+                      quantity: 1,
+                      uom: 'PACK',
+                      discount: 30,
+                      lineTotal: 460,
+                    },
+                    {
+                      id: `c-qb-2`,
+                      productId: 'p-qb2',
+                      skuCode: 'FMCG-OIL-02',
+                      nameEn: 'Fortune Sunlite Sunflower Oil 1L',
+                      nameRegional: 'சூரியகாந்தி எண்ணெய் 1லி',
+                      batchNumber: 'FSO-104',
+                      mrp: 165,
+                      sellingPrice: 145,
+                      quantity: 2,
+                      uom: 'PACK',
+                      discount: 40,
+                      lineTotal: 290,
+                    },
+                  ]);
+                  setCustomerName('Priya N. (Queue Token Customer)');
+                  setCustomerPhone('9840199887');
+                  setReceiptSuccessModal(
+                    `Queue-Buster Cart "${queueTokenInput || 'QB-4092'}" loaded into billing screen! Ready for instant payment.`,
+                  );
+                  setQueueTokenModalOpen(false);
+                  setQueueTokenInput('');
+                }}
+                style={{ padding: '8px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                Load Cart
               </button>
             </div>
           </div>

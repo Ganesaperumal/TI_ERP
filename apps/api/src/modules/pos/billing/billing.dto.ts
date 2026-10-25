@@ -149,6 +149,14 @@ export class PosCheckoutDto {
   @IsOptional()
   @IsString()
   parkedBillIdToClear?: string;
+
+  @IsOptional()
+  @IsString()
+  loyaltyRedemptionOtp?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorPinForKhata?: string;
 }
 
 export class ReturnLineItemDto {

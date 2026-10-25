@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { PosSecurityService } from '../shifts/pos-security.service';
 import {
   Decimal,
   ShiftStatusEnum,
@@ -12,6 +13,7 @@ import {
   PaymentMethodEnum,
   CreditNoteStatusEnum,
   PosInvoiceTypeEnum,
+  AuditExceptionTypeEnum,
 } from '@ti-erp/database';
 import { PosCheckoutDto } from './billing.dto';
 
@@ -27,7 +29,10 @@ export interface HsnSummaryEntry {
 
 @Injectable()
 export class PosBillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly securityService: PosSecurityService,
+  ) {}
 
   /**
    * Atomic POS Checkout Transaction & Invoice Generation
@@ -77,6 +82,16 @@ export class PosBillingService {
           binType: StorageBinTypeEnum.SHOP_FLOOR,
         },
       })).id;
+
+      let customer: any = null;
+      if (dto.customerId) {
+        customer = await tx.customer.findUnique({ where: { id: dto.customerId } });
+      }
+
+      // REMOD-401B: Inter-State GSTIN Detection (State code is first 2 digits of GSTIN)
+      const customerState = customer?.gstin ? customer.gstin.trim().substring(0, 2) : null;
+      const branchState = branch.gstin ? branch.gstin.trim().substring(0, 2) : null;
+      const isInterState = !!(customerState && branchState && customerState !== branchState);
 
       let totalGrossAmount = new Decimal(0);
       let totalDiscountAmount = new Decimal(0);
@@ -130,7 +145,7 @@ export class PosBillingService {
           }
         }
 
-        // GST Inclusive Back-Calculation
+        // GST Inclusive Back-Calculation with REMOD-401B Exact Accounting Identity Enforced
         let lineTaxable = lineNet;
         let lineCgst = new Decimal(0);
         let lineSgst = new Decimal(0);
@@ -144,16 +159,26 @@ export class PosBillingService {
         if (!isComposition && totalTaxRatePct.greaterThan(0)) {
           // Formula: Taxable = Net / (1 + TaxRate/100)
           const divisor = new Decimal(1).add(totalTaxRatePct.div(100));
-          lineTaxable = lineNet.div(divisor).toDecimalPlaces(2);
-          const totalTaxVal = lineNet.sub(lineTaxable);
+          const rawTaxable = lineNet.div(divisor);
 
-          // Standard intra-state split (CGST + SGST)
-          const halfGstRate = gstRatePct.div(2);
-          lineCgst = lineTaxable.mul(halfGstRate).div(100).toDecimalPlaces(2);
-          lineSgst = lineTaxable.mul(halfGstRate).div(100).toDecimalPlaces(2);
-          if (cessRatePct.greaterThan(0)) {
-            lineCess = lineTaxable.mul(cessRatePct).div(100).toDecimalPlaces(2);
+          if (isInterState) {
+            // Inter-State B2B Sale -> IGST
+            lineIgst = rawTaxable.mul(gstRatePct).div(100).toDecimalPlaces(2);
+          } else {
+            // Intra-State Sale -> CGST + SGST split equally
+            const halfGstRate = gstRatePct.div(2);
+            lineCgst = rawTaxable.mul(halfGstRate).div(100).toDecimalPlaces(2);
+            lineSgst = rawTaxable.mul(halfGstRate).div(100).toDecimalPlaces(2);
           }
+
+          if (cessRatePct.greaterThan(0)) {
+            lineCess = rawTaxable.mul(cessRatePct).div(100).toDecimalPlaces(2);
+          }
+
+          // REMOD-401B: Enforce exact accounting identity:
+          // lineTaxable = lineNet - (lineCgst + lineSgst + lineIgst + lineCess)
+          // Guarantees Taxable + Tax === Net Line Total to the exact paisa (0.00)!
+          lineTaxable = lineNet.sub(lineCgst).sub(lineSgst).sub(lineIgst).sub(lineCess);
         }
 
         totalTaxableAmount = totalTaxableAmount.add(lineTaxable);
@@ -181,8 +206,15 @@ export class PosBillingService {
         existingHsn.totalTax += Number(lineCgst.add(lineSgst).add(lineIgst).add(lineCess));
         hsnSummaryMap.set(hsnCode, existingHsn);
 
-        // Stock Deduction & Ledger Recording
-        if (product.productType === 'COMBO_KIT' && product.comboAsParent.length > 0) {
+        // REMOD-401C: Stock Deduction & Ledger Recording
+        // Only deduct child ComboBomItem stock when configured as dynamic (DYNAMIC_POS)
+        // If PRE_PACKED, deduct only parent combo batch from SHOP_FLOOR
+        const isDynamicCombo =
+          product.productType === 'COMBO_KIT' &&
+          product.comboAsParent.length > 0 &&
+          product.comboAsParent.some((b: any) => b.comboMode === 'DYNAMIC_POS');
+
+        if (isDynamicCombo) {
           // Deduct underlying BOM components from Shop Floor
           for (const bomItem of product.comboAsParent) {
             const childDeductQty = bomItem.quantityRequired.mul(lineQty);
@@ -235,7 +267,7 @@ export class PosBillingService {
                   referenceType: 'POS_INVOICE',
                   referenceId: invoiceNumber,
                   unitCost: childBatch.netLandingCost,
-                  notes: `Combo BOM Sale: ${product.nameEn} (Parent) -> ${bomItem.childProduct.nameEn}`,
+                  notes: `Dynamic Combo BOM Sale: ${product.nameEn} (Parent) -> ${bomItem.childProduct.nameEn}`,
                 },
               });
             }
@@ -310,7 +342,7 @@ export class PosBillingService {
         });
       }
 
-      // Multi-Mode Split Payment Validation
+      // Multi-Mode Split Payment Validation (Cash, UPI, Card, Sodexo, Credit Note, Khata, Loyalty, Gift Card)
       let totalTendered = new Decimal(0);
       const paymentRecords: any[] = [];
 
@@ -346,6 +378,102 @@ export class PosBillingService {
             },
           });
           slipId = slip.id;
+        }
+
+        // Customer Khata (Credit) tender validation & ledger record
+        if (p.method === PaymentMethodEnum.CUSTOMER_KHATA) {
+          if (!customer) {
+            throw new BadRequestException('Customer profile required to bill on Khata (Credit)');
+          }
+          const newKhataBal = customer.khataCurrentBalance.add(amt);
+          if (customer.khataCreditLimit.greaterThan(0) && newKhataBal.greaterThan(customer.khataCreditLimit)) {
+            if (!dto.supervisorPinForKhata) {
+              throw new BadRequestException(
+                `Customer credit limit exceeded (Limit: ₹${customer.khataCreditLimit}, Current: ₹${customer.khataCurrentBalance}, Attempted: ₹${newKhataBal}). Supervisor PIN override required.`,
+              );
+            }
+            // Verify supervisor pin
+            await this.securityService.verifyOverride({
+              tenantId: dto.tenantId,
+              branchId: dto.branchId,
+              terminalId: dto.terminalId,
+              cashierId: dto.cashierId,
+              supervisorPinOrBadge: dto.supervisorPinForKhata,
+              exceptionType: AuditExceptionTypeEnum.MANUAL_PRICE_OVERRIDE,
+              reason: 'Customer Khata credit limit exceeded override',
+            });
+          }
+
+          await tx.customer.update({
+            where: { id: customer.id },
+            data: { khataCurrentBalance: newKhataBal },
+          });
+
+          await tx.customerKhataLedger.create({
+            data: {
+              customerId: customer.id,
+              txnType: 'DEBIT_PURCHASE',
+              amount: amt,
+              runningBalance: newKhataBal,
+              paymentMethod: 'CUSTOMER_KHATA',
+              notes: `Credit Sale: Invoice ${invoiceNumber}`,
+            },
+          });
+        }
+
+        // Loyalty Points redemption validation & ledger record
+        if (p.method === PaymentMethodEnum.LOYALTY_POINTS) {
+          if (!customer) {
+            throw new BadRequestException('Customer profile required to redeem Loyalty Points');
+          }
+          if (customer.loyaltyPointsBalance.lessThan(amt)) {
+            throw new BadRequestException(
+              `Insufficient loyalty points balance (Available: ${customer.loyaltyPointsBalance}, Attempted: ${amt})`,
+            );
+          }
+          const newPointsBal = customer.loyaltyPointsBalance.sub(amt);
+          await tx.customer.update({
+            where: { id: customer.id },
+            data: { loyaltyPointsBalance: newPointsBal },
+          });
+
+          await tx.loyaltyLedger.create({
+            data: {
+              customerId: customer.id,
+              transactionType: 'REDEEM',
+              points: amt,
+              balanceAfter: newPointsBal,
+              otpVerified: !!dto.loyaltyRedemptionOtp,
+              notes: `Redeemed at checkout for Invoice ${invoiceNumber}`,
+            },
+          });
+        }
+
+        // Gift Card tender validation & atomic balance deduction
+        if (p.method === PaymentMethodEnum.GIFT_CARD) {
+          if (!p.giftCardNumber) {
+            throw new BadRequestException('Gift card barcode/number required for GIFT_CARD tender');
+          }
+          const giftCard = await tx.giftCard.findUnique({
+            where: {
+              tenantId_cardBarcode: {
+                tenantId: dto.tenantId,
+                cardBarcode: p.giftCardNumber,
+              },
+            },
+          });
+          if (!giftCard || !giftCard.isActive || giftCard.expiryDate < new Date()) {
+            throw new BadRequestException(`Gift card ${p.giftCardNumber} is invalid or expired`);
+          }
+          if (giftCard.currentBalance.lessThan(amt)) {
+            throw new BadRequestException(
+              `Gift card balance ₹${giftCard.currentBalance} is insufficient for tender ₹${amt}`,
+            );
+          }
+          await tx.giftCard.update({
+            where: { id: giftCard.id },
+            data: { currentBalance: giftCard.currentBalance.sub(amt) },
+          });
         }
 
         // Cash change calculation
@@ -419,6 +547,44 @@ export class PosBillingService {
           where: { id: dto.parkedBillIdToClear },
           data: { isRecalled: true, recalledAt: new Date() },
         });
+      }
+
+      // Auto-earn loyalty points for customer
+      if (customer) {
+        // Base rule: 1 point per 100 spent
+        const pointsEarned = netPayable.div(100).toDecimalPlaces(2);
+        if (pointsEarned.greaterThan(0)) {
+          const freshCustomer = await tx.customer.findUnique({ where: { id: customer.id } });
+          if (freshCustomer) {
+            const newPoints = freshCustomer.loyaltyPointsBalance.add(pointsEarned);
+            let nextTier = freshCustomer.loyaltyTier;
+            if (netPayable.greaterThanOrEqualTo(25000) || newPoints.greaterThanOrEqualTo(250)) {
+              nextTier = 'VIP';
+            } else if (netPayable.greaterThanOrEqualTo(10000) || newPoints.greaterThanOrEqualTo(100)) {
+              if (nextTier !== 'VIP') nextTier = 'GOLD';
+            }
+
+            await tx.customer.update({
+              where: { id: customer.id },
+              data: {
+                loyaltyPointsBalance: newPoints,
+                loyaltyTier: nextTier,
+              },
+            });
+
+            await tx.loyaltyLedger.create({
+              data: {
+                customerId: customer.id,
+                invoiceId: invoice.id,
+                transactionType: 'EARN',
+                points: pointsEarned,
+                balanceAfter: newPoints,
+                otpVerified: false,
+                notes: `Earned on purchase: Invoice ${invoiceNumber}`,
+              },
+            });
+          }
+        }
       }
 
       const totalSavings = totalDiscountAmount.add(

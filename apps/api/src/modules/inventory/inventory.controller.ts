@@ -5,6 +5,7 @@ import {
   ResolveBatchForPosSaleDto,
   ApplyClearanceOfferDto,
   ExecuteRepackingJobDto,
+  AssemblePrePackedComboDto,
 } from './inventory.dto';
 
 @Controller('api/v1/inventory')
@@ -41,5 +42,11 @@ export class InventoryController {
   @Post('repacking')
   executeRepacking(@Body() dto: ExecuteRepackingJobDto) {
     return this.inventoryService.executeRepackingJob(dto);
+  }
+
+  // Pre-Packed Combo Assembly
+  @Post('combos/assemble')
+  assembleCombo(@Body() dto: AssemblePrePackedComboDto) {
+    return this.inventoryService.assemblePrePackedCombo(dto);
   }
 }

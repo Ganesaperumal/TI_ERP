@@ -132,3 +132,34 @@ export class ExecuteRepackingJobDto {
   @IsString()
   destinationBinId?: string; // default to SHOP_FLOOR bin
 }
+
+export class AssemblePrePackedComboDto {
+  @IsString()
+  tenantId!: string;
+
+  @IsString()
+  branchId!: string;
+
+  @IsString()
+  parentComboProductId!: string;
+
+  @IsNumber()
+  quantity!: number; // Quantity of parent combo kits to assemble
+
+  @IsString()
+  batchNumber!: string;
+
+  @IsNumber()
+  mrp!: number;
+
+  @IsNumber()
+  sellingPrice!: number;
+
+  @IsOptional()
+  @IsDateString()
+  expiryDate?: string;
+
+  @IsOptional()
+  @IsString()
+  binId?: string; // Target bin, defaults to SHOP_FLOOR
+}

@@ -11,6 +11,7 @@ import {
   ResolveBatchForPosSaleDto,
   ApplyClearanceOfferDto,
   ExecuteRepackingJobDto,
+  AssemblePrePackedComboDto,
 } from './inventory.dto';
 import {
   BatchTrackingMode,
@@ -460,6 +461,202 @@ export class InventoryBatchService {
         retailBatch,
         calculatedUnitCost: Number(unitLandingCost),
         labelsToPrint: Number(retailPacksProduced),
+      };
+    });
+  }
+
+  // 5. REMOD-401C: Back-Office Pre-Packed Combo Assembly
+  // Consumes child BOM items from SHOP_FLOOR and creates/increments parent combo batch stock
+  async assemblePrePackedCombo(dto: AssemblePrePackedComboDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const parentProduct = await tx.product.findUnique({
+        where: { id: dto.parentComboProductId },
+        include: {
+          comboAsParent: {
+            include: { childProduct: true },
+          },
+        },
+      });
+
+      if (!parentProduct) {
+        throw new NotFoundException(`Combo product ${dto.parentComboProductId} not found`);
+      }
+      if (parentProduct.productType !== 'COMBO_KIT' || parentProduct.comboAsParent.length === 0) {
+        throw new BadRequestException(`Product ${parentProduct.skuCode} is not configured as a COMBO_KIT with BOM items`);
+      }
+
+      // Target bin: explicit or default SHOP_FLOOR
+      let targetBinId = dto.binId;
+      if (!targetBinId) {
+        const shopFloorBin = await tx.storageBin.findFirst({
+          where: { branchId: dto.branchId, binType: 'SHOP_FLOOR' },
+        });
+        if (!shopFloorBin) {
+          throw new BadRequestException('SHOP_FLOOR bin not found for branch');
+        }
+        targetBinId = shopFloorBin.id;
+      }
+
+      const assembleQty = new Decimal(dto.quantity);
+      let totalLandedCostPerUnit = new Decimal(0);
+
+      // Deduct child BOM items
+      for (const bomItem of parentProduct.comboAsParent) {
+        const requiredChildQty = bomItem.quantityRequired.mul(assembleQty);
+
+        // Find child batch in branch with positive stock
+        const childBatch = await tx.inventoryBatch.findFirst({
+          where: { branchId: dto.branchId, productId: bomItem.childProductId },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!childBatch) {
+          throw new BadRequestException(
+            `No active batch found for BOM component ${bomItem.childProduct.nameEn} (${bomItem.childProduct.skuCode})`,
+          );
+        }
+
+        const childBalance = await tx.binStockBalance.findUnique({
+          where: {
+            branchId_binId_batchId: {
+              branchId: dto.branchId,
+              binId: targetBinId,
+              batchId: childBatch.id,
+            },
+          },
+        });
+
+        const newChildQty = childBalance ? childBalance.quantity.sub(requiredChildQty) : requiredChildQty.negated();
+
+        await tx.binStockBalance.upsert({
+          where: {
+            branchId_binId_batchId: {
+              branchId: dto.branchId,
+              binId: targetBinId,
+              batchId: childBatch.id,
+            },
+          },
+          update: { quantity: newChildQty },
+          create: {
+            tenantId: dto.tenantId,
+            branchId: dto.branchId,
+            binId: targetBinId,
+            productId: bomItem.childProductId,
+            batchId: childBatch.id,
+            quantity: newChildQty,
+          },
+        });
+
+        await tx.stockLedger.create({
+          data: {
+            tenantId: dto.tenantId,
+            branchId: dto.branchId,
+            binId: targetBinId,
+            productId: bomItem.childProductId,
+            batchId: childBatch.id,
+            movementType: 'REPACK_BULK_CONSUMPTION',
+            quantityChange: requiredChildQty.negated(),
+            runningBalance: newChildQty,
+            referenceType: 'COMBO_ASSEMBLY',
+            referenceId: dto.batchNumber,
+            unitCost: childBatch.netLandingCost,
+            notes: `Consumed for Combo Kit Assembly: ${parentProduct.nameEn} (Batch: ${dto.batchNumber})`,
+          },
+        });
+
+        const componentCost = bomItem.quantityRequired.mul(childBatch.netLandingCost);
+        totalLandedCostPerUnit = totalLandedCostPerUnit.add(componentCost);
+      }
+
+      // Upsert parent combo batch
+      let parentBatch = await tx.inventoryBatch.findFirst({
+        where: {
+          branchId: dto.branchId,
+          productId: dto.parentComboProductId,
+          batchNumber: dto.batchNumber,
+        },
+      });
+
+      if (parentBatch) {
+        parentBatch = await tx.inventoryBatch.update({
+          where: { id: parentBatch.id },
+          data: {
+            mrp: new Decimal(dto.mrp),
+            retailSellingPrice: new Decimal(dto.sellingPrice),
+            netLandingCost: totalLandedCostPerUnit,
+            expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : parentBatch.expiryDate,
+          },
+        });
+      } else {
+        parentBatch = await tx.inventoryBatch.create({
+          data: {
+            tenantId: dto.tenantId,
+            branchId: dto.branchId,
+            productId: dto.parentComboProductId,
+            batchNumber: dto.batchNumber,
+            mrp: new Decimal(dto.mrp),
+            purchaseRate: totalLandedCostPerUnit,
+            netLandingCost: totalLandedCostPerUnit,
+            retailSellingPrice: new Decimal(dto.sellingPrice),
+            expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+          },
+        });
+      }
+
+      // Increment parent stock in SHOP_FLOOR bin
+      const parentBalance = await tx.binStockBalance.findUnique({
+        where: {
+          branchId_binId_batchId: {
+            branchId: dto.branchId,
+            binId: targetBinId,
+            batchId: parentBatch.id,
+          },
+        },
+      });
+
+      const newParentQty = parentBalance ? parentBalance.quantity.add(assembleQty) : assembleQty;
+
+      await tx.binStockBalance.upsert({
+        where: {
+          branchId_binId_batchId: {
+            branchId: dto.branchId,
+            binId: targetBinId,
+            batchId: parentBatch.id,
+          },
+        },
+        update: { quantity: newParentQty },
+        create: {
+          tenantId: dto.tenantId,
+          branchId: dto.branchId,
+          binId: targetBinId,
+          productId: dto.parentComboProductId,
+          batchId: parentBatch.id,
+          quantity: newParentQty,
+        },
+      });
+
+      await tx.stockLedger.create({
+        data: {
+          tenantId: dto.tenantId,
+          branchId: dto.branchId,
+          binId: targetBinId,
+          productId: dto.parentComboProductId,
+          batchId: parentBatch.id,
+          movementType: 'REPACK_RETAIL_PRODUCTION',
+          quantityChange: assembleQty,
+          runningBalance: newParentQty,
+          referenceType: 'COMBO_ASSEMBLY',
+          referenceId: dto.batchNumber,
+          unitCost: totalLandedCostPerUnit,
+          notes: `Assembled ${dto.quantity} pre-packed kits of ${parentProduct.nameEn}`,
+        },
+      });
+
+      return {
+        success: true,
+        parentBatchId: parentBatch.id,
+        quantityAssembled: dto.quantity,
+        unitLandedCost: Number(totalLandedCostPerUnit),
       };
     });
   }

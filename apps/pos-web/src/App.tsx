@@ -9,10 +9,14 @@ import { SuppliersAndReturnsPage } from './features/procurement/SuppliersAndRetu
 import { PosBillingScreen } from './features/pos/PosBillingScreen';
 import { CustomerDualDisplayPage } from './features/pos/CustomerDualDisplayPage';
 import { ShiftAndZReportPage } from './features/pos/ShiftAndZReportPage';
+import { CrmLoyaltyAndKhataPage } from './features/crm/CrmLoyaltyAndKhataPage';
+import { DeliveryAndQueueBusterPage } from './features/fulfillment/DeliveryAndQueueBusterPage';
 
 type AppTab =
   | 'POS'
   | 'SHIFT_REGISTER'
+  | 'CRM_LOYALTY'
+  | 'DELIVERY_MPOS'
   | 'GRN_ENTRY'
   | 'AUTO_REORDER'
   | 'SUPPLIERS_RETURNS'
@@ -27,6 +31,8 @@ export const App: React.FC = () => {
 
   const tabs: Array<{ id: AppTab; label: string }> = [
     { id: 'POS', label: '🛒 Cashier POS (F1-F12)' },
+    { id: 'CRM_LOYALTY', label: '👑 CRM & Khata' },
+    { id: 'DELIVERY_MPOS', label: '📦 Delivery & mPOS' },
     { id: 'SHIFT_REGISTER', label: '🔒 Register & Z-Report' },
     { id: 'GRN_ENTRY', label: '⚡ Smart GRN & Costing' },
     { id: 'AUTO_REORDER', label: '🤖 Auto-Reorder & PO' },
@@ -86,6 +92,8 @@ export const App: React.FC = () => {
 
       <main>
         {activeTab === 'POS' && <PosBillingScreen />}
+        {activeTab === 'CRM_LOYALTY' && <CrmLoyaltyAndKhataPage />}
+        {activeTab === 'DELIVERY_MPOS' && <DeliveryAndQueueBusterPage />}
         {activeTab === 'SHIFT_REGISTER' && <ShiftAndZReportPage />}
         {activeTab === 'DUAL_DISPLAY' && <CustomerDualDisplayPage />}
         {activeTab === 'GRN_ENTRY' && <GrnEntryPage />}

@@ -8,12 +8,16 @@ import { BillingController } from './billing/billing.controller';
 import { PosBillingService } from './billing/pos-billing.service';
 import { PosParkedBillService } from './billing/pos-parked-bill.service';
 import { PosReturnService } from './billing/pos-return.service';
+import { FulfillmentController } from './fulfillment/fulfillment.controller';
+import { HomeDeliveryService } from './fulfillment/home-delivery.service';
+import { QueueBusterService } from './fulfillment/queue-buster.service';
 
 @Module({
   controllers: [
     ShiftController,
     PromotionController,
     BillingController,
+    FulfillmentController,
   ],
   providers: [
     PosShiftService,
@@ -22,6 +26,8 @@ import { PosReturnService } from './billing/pos-return.service';
     PosBillingService,
     PosParkedBillService,
     PosReturnService,
+    HomeDeliveryService,
+    QueueBusterService,
   ],
   exports: [
     PosShiftService,
@@ -30,6 +36,8 @@ import { PosReturnService } from './billing/pos-return.service';
     PosBillingService,
     PosParkedBillService,
     PosReturnService,
+    HomeDeliveryService,
+    QueueBusterService,
   ],
 })
 export class PosModule {}

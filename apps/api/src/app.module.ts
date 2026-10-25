@@ -6,6 +6,8 @@ import { CoreModule } from './modules/core/core.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { StockOpsModule } from './modules/stock-ops/stock-ops.module';
+import { ProcurementModule } from './modules/procurement/procurement.module';
+import { AiCopilotModule } from './modules/ai-copilot/ai-copilot.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { StockOpsModule } from './modules/stock-ops/stock-ops.module';
     CatalogModule,
     InventoryModule,
     StockOpsModule,
+    ProcurementModule,
+    AiCopilotModule,
   ],
   controllers: [AppController],
   providers: [AppService],

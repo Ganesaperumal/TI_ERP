@@ -27,38 +27,53 @@ export interface GondolaTagParams {
 
 export class ZplLabelGenerator {
   /**
-   * Generates standard ZPL-II code for 50x25mm or 38x25mm packaging stickers
+   * Generates standard ZPL-II code for 50x25mm (2-up) or 38x25mm packaging stickers
+   * Supports true 2-up pair printing across X=20 (left) and X=420 (right)
    */
-  public static generateRepackStickerZpl(params: RepackStickerParams): string {
-    const savings = params.mrp > params.sellingPrice ? params.mrp - params.sellingPrice : 0;
+  public static generateRepackStickerZpl(
+    left: RepackStickerParams,
+    right?: RepackStickerParams,
+  ): string {
+    const renderSingle = (params: RepackStickerParams, offsetX: number) => {
+      const savings = params.mrp > params.sellingPrice ? params.mrp - params.sellingPrice : 0;
+      return `
+; --- Header Store Name (X=${offsetX}) ---
+^FO${offsetX},15^A0N,22,22^FD${params.storeName}^FS
 
-    let zpl = `^XA
-^PW800
-^LL400
-^PON
-
-; --- Header Store Name ---
-^FO20,20^A0N,22,22^FD${params.storeName}^FS
-
-; --- Product Name ---
-^FO20,48^A0N,24,24^FD${params.nameEn.slice(0, 24)}^FS
-${params.nameRegional ? `^FO20,74^A0N,20,20^FD${params.nameRegional.slice(0, 24)}^FS` : ''}
+; --- Product Name (En + Regional) ---
+^FO${offsetX},40^A0N,22,22^FD${params.nameEn.slice(0, 22)}^FS
+${params.nameRegional ? `^FO${offsetX},64^A0N,20,20^FD${params.nameRegional.slice(0, 22)}^FS` : ''}
 
 ; --- Weight & Dates ---
-^FO20,102^A0N,18,18^FDNet Wt: ${params.netWeight} | Pkd: ${params.packedDate}^FS
-^FO20,124^A0N,18,18^FDExp: ${params.expiryDate}^FS
+^FO${offsetX},88^A0N,18,18^FDNet: ${params.netWeight} | Pkd: ${params.packedDate}^FS
+^FO${offsetX},108^A0N,18,18^FDExp: ${params.expiryDate}^FS
 
 ; --- Barcode (Code128) ---
-^FO20,150^BCN,45,Y,N,N
+^FO${offsetX},130^BCN,42,Y,N,N
 ^FD${params.barcode}^FS
 
 ; --- Pricing Block ---
-^FO20,225^A0N,20,20^FDM.R.P: Rs.${params.mrp.toFixed(2)}^FS
-^FO180,220^A0N,30,30^FDOUR PRICE: Rs.${params.sellingPrice.toFixed(2)}^FS
-${savings > 0 ? `^FO20,255^A0N,18,18^FD(Save Rs.${savings.toFixed(2)})^FS` : ''}
+^FO${offsetX},195^A0N,18,18^FDM.R.P: Rs.${params.mrp.toFixed(2)}^FS
+^FO${offsetX + 150},192^A0N,26,26^FDOUR: Rs.${params.sellingPrice.toFixed(2)}^FS
+${savings > 0 ? `^FO${offsetX},225^A0N,16,16^FD(You Save Rs.${savings.toFixed(2)})^FS` : ''}`;
+    };
 
-^XZ`;
+    let zpl = `^XA
+^PW800
+^LL280
+^PON
+`;
 
+    // Render left column sticker at X=20
+    zpl += renderSingle(left, 20);
+
+    // Render right column sticker at X=420 if 2-up is enabled
+    const rightTarget = right || (left.isTwoUp ? left : undefined);
+    if (rightTarget) {
+      zpl += renderSingle(rightTarget, 420);
+    }
+
+    zpl += `\n^XZ`;
     return zpl;
   }
 

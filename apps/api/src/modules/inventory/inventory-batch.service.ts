@@ -109,12 +109,15 @@ export class InventoryBatchService {
     });
     if (!product) throw new NotFoundException(`Product ${dto.productId} not found`);
 
-    // Fetch in-stock batches in SHOP_FLOOR bin
+    // Fetch in-stock batches in SHOP_FLOOR or CONSIGNMENT bins (never damaged/scrap!)
     const balances = await this.prisma.binStockBalance.findMany({
       where: {
         branchId: dto.branchId,
         productId: dto.productId,
         quantity: { gt: 0 },
+        bin: {
+          binType: { in: ['SHOP_FLOOR', 'CONSIGNMENT'] },
+        },
       },
       include: {
         batch: true,
@@ -140,6 +143,7 @@ export class InventoryBatchService {
           requiresBatchPopup: false,
           resolvedBatch: fallbackBatch,
           effectivePrice: Number(fallbackBatch.retailSellingPrice),
+          effectivePriceDecimal: fallbackBatch.retailSellingPrice,
           netLandingCostSnapshot: fallbackBatch.netLandingCost,
         };
       }
@@ -147,6 +151,7 @@ export class InventoryBatchService {
         requiresBatchPopup: false,
         resolvedBatch: selected.batch,
         effectivePrice: Number(selected.batch.retailSellingPrice),
+        effectivePriceDecimal: selected.batch.retailSellingPrice,
         netLandingCostSnapshot: selected.batch.netLandingCost,
       };
     }
@@ -157,7 +162,7 @@ export class InventoryBatchService {
         ? config.inventory.defaultBatchTrackingMode
         : (product.batchTrackingMode as BatchTrackingMode);
 
-    // If no active batches in stock
+    // If no active batches in stock on shop floor (REMOD-201B zero-stock handling)
     if (balances.length === 0) {
       // Check negative stock rule
       const negRule =
@@ -177,17 +182,22 @@ export class InventoryBatchService {
         };
       }
 
-      // Find any batch for this item to use as reference
-      const anyBatch = await this.prisma.inventoryBatch.findFirst({
+      // Fallback: fetch latest InventoryBatch for this product in the branch
+      const latestBatch = await this.prisma.inventoryBatch.findFirst({
         where: { branchId: dto.branchId, productId: dto.productId },
         orderBy: { createdAt: 'desc' },
       });
 
+      if (!latestBatch) {
+        throw new NotFoundException(`No active or historical batch found for product ${product.skuCode}`);
+      }
+
       return {
         requiresBatchPopup: false,
-        resolvedBatch: anyBatch,
-        effectivePrice: anyBatch ? Number(anyBatch.retailSellingPrice) : 0,
-        netLandingCostSnapshot: anyBatch ? anyBatch.netLandingCost : new Decimal(0),
+        resolvedBatch: latestBatch,
+        effectivePrice: Number(latestBatch.retailSellingPrice),
+        effectivePriceDecimal: latestBatch.retailSellingPrice,
+        netLandingCostSnapshot: latestBatch.netLandingCost,
         negativeStockApproved: true,
       };
     }
@@ -220,17 +230,19 @@ export class InventoryBatchService {
     const bestBatchBalance = balances[0];
     const resolvedBatch = bestBatchBalance.batch;
 
-    // Check near-expiry clearance discount if active
-    let effectivePrice = Number(resolvedBatch.retailSellingPrice);
-    if (resolvedBatch.isNearExpiryClearance && Number(resolvedBatch.clearanceDiscountPct) > 0) {
-      const discount = (effectivePrice * Number(resolvedBatch.clearanceDiscountPct)) / 100;
-      effectivePrice = effectivePrice - discount;
+    // Strict Decimal arithmetic for clearance discount calculation (REMOD-201B)
+    const sellingPriceDec = resolvedBatch.retailSellingPrice;
+    let effectivePriceDec = sellingPriceDec;
+    if (resolvedBatch.isNearExpiryClearance && resolvedBatch.clearanceDiscountPct.gt(0)) {
+      const discountDec = sellingPriceDec.mul(resolvedBatch.clearanceDiscountPct).div(100);
+      effectivePriceDec = sellingPriceDec.sub(discountDec).toDecimalPlaces(2);
     }
 
     return {
       requiresBatchPopup: false,
       resolvedBatch,
-      effectivePrice,
+      effectivePrice: Number(effectivePriceDec),
+      effectivePriceDecimal: effectivePriceDec,
       netLandingCostSnapshot: resolvedBatch.netLandingCost,
     };
   }

@@ -4,8 +4,20 @@ import { StoreConfigPage } from './features/settings/StoreConfigPage';
 import { ProductMasterPage } from './features/inventory/ProductMasterPage';
 import { RepackingStudioPage } from './features/inventory/RepackingStudioPage';
 import { StockAuditAndExpiryPage } from './features/inventory/StockAuditAndExpiryPage';
+import { GrnEntryPage } from './features/procurement/GrnEntryPage';
+import { AutoReorderAndPoPage } from './features/procurement/AutoReorderAndPoPage';
+import { SuppliersAndReturnsPage } from './features/procurement/SuppliersAndReturnsPage';
 
-type AppTab = 'POS' | 'DUAL_DISPLAY' | 'STORE_CONFIG' | 'PRODUCT_MASTER' | 'REPACKING' | 'STOCK_AUDIT';
+type AppTab =
+  | 'POS'
+  | 'DUAL_DISPLAY'
+  | 'PRODUCT_MASTER'
+  | 'REPACKING'
+  | 'STOCK_AUDIT'
+  | 'GRN_ENTRY'
+  | 'AUTO_REORDER'
+  | 'SUPPLIERS_RETURNS'
+  | 'STORE_CONFIG';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>('POS');
@@ -13,10 +25,13 @@ export const App: React.FC = () => {
 
   const tabs: Array<{ id: AppTab; label: string }> = [
     { id: 'POS', label: 'Cashier POS (F1-F12)' },
-    { id: 'DUAL_DISPLAY', label: 'Dual Display' },
+    { id: 'GRN_ENTRY', label: '⚡ Smart GRN & Costing' },
+    { id: 'AUTO_REORDER', label: '🤖 Auto-Reorder & PO' },
+    { id: 'SUPPLIERS_RETURNS', label: '🤝 Suppliers & Debits' },
     { id: 'PRODUCT_MASTER', label: 'Product Master' },
     { id: 'REPACKING', label: 'Repacking Studio' },
     { id: 'STOCK_AUDIT', label: 'Audit & Expiry' },
+    { id: 'DUAL_DISPLAY', label: 'Dual Display' },
     { id: 'STORE_CONFIG', label: 'Store Settings' },
   ];
 
@@ -145,6 +160,9 @@ export const App: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'GRN_ENTRY' && <GrnEntryPage />}
+        {activeTab === 'AUTO_REORDER' && <AutoReorderAndPoPage />}
+        {activeTab === 'SUPPLIERS_RETURNS' && <SuppliersAndReturnsPage />}
         {activeTab === 'PRODUCT_MASTER' && <ProductMasterPage />}
         {activeTab === 'REPACKING' && <RepackingStudioPage />}
         {activeTab === 'STOCK_AUDIT' && <StockAuditAndExpiryPage />}

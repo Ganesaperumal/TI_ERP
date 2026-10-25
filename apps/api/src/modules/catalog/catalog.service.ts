@@ -219,7 +219,7 @@ export class CatalogService {
       const skuOrPlu = trimmedCode.substring(startSku, startSku + scaleRule.skuLength);
       const startWeight = startSku + scaleRule.skuLength;
       const weightRaw = trimmedCode.substring(startWeight, startWeight + scaleRule.weightLength);
-      const weightKg = parseFloat(weightRaw) / Math.pow(10, scaleRule.weightDecimals);
+      const weightKg = new Decimal(weightRaw).div(new Decimal(10).pow(scaleRule.weightDecimals));
 
       // Find product by short PLU code (trimmed of leading zeroes) or SKU code
       const cleanPlu = parseInt(skuOrPlu, 10).toString();
@@ -243,10 +243,39 @@ export class CatalogService {
           scaleData: {
             prefix: scaleRule.prefix,
             rawWeight: weightRaw,
-            weightKg,
+            weightKg: Number(weightKg),
+            weightKgDecimal: weightKg,
           },
         };
       }
+    }
+
+    // Check Multi-UOM Carton / Box Specific Barcode (REMOD-201A)
+    const uomConversion = await this.prisma.productUomConversion.findFirst({
+      where: {
+        barcode: trimmedCode,
+        product: { tenantId: branch.tenantId },
+      },
+      include: {
+        product: {
+          include: { hsn: true, uomConversions: true, barcodes: true },
+        },
+      },
+    });
+
+    if (uomConversion) {
+      return {
+        resolvedBy: 'UOM_CONVERSION_BARCODE',
+        product: uomConversion.product,
+        uomConversion: {
+          id: uomConversion.id,
+          uomName: uomConversion.uomName,
+          conversionFactor: uomConversion.conversionFactor,
+          barcode: uomConversion.barcode,
+          retailPrice: uomConversion.retailPrice,
+          wholesalePrice: uomConversion.wholesalePrice,
+        },
+      };
     }
 
     // CASE A: Standard EAN-13, UPC, or Internal Barcode Match
@@ -267,27 +296,6 @@ export class CatalogService {
         resolvedBy: 'BARCODE_ALIAS',
         product: barcodeEntry.product,
         matchedBarcode: barcodeEntry.barcode,
-      };
-    }
-
-    // Check Multi-UOM Barcode (e.g., Carton / Box specific barcode)
-    const uomEntry = await this.prisma.productUomConversion.findFirst({
-      where: {
-        tenantId: branch.tenantId,
-        barcode: trimmedCode,
-      },
-      include: {
-        product: {
-          include: { hsn: true, uomConversions: true, barcodes: true },
-        },
-      },
-    });
-
-    if (uomEntry) {
-      return {
-        resolvedBy: 'UOM_CARTON_BARCODE',
-        product: uomEntry.product,
-        uomConversion: uomEntry,
       };
     }
 

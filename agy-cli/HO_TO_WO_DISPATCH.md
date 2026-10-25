@@ -1,146 +1,153 @@
 # HO_TO_WO_DISPATCH.md
 **From:** Argon (Director & CTO — Head Office / Gemini Web)
-**To:** Agy CLI Execution Wing (5x Senior Devs — Flash 3.8 High)
-**Repository:** `https://github.com/Ganesaperumal/TI-ERP.git`
-**Last Verified Commit:** `11613591e87e1199a51c730eb92cdb75b9316955`
-**Dispatch ID:** `DISPATCH-002` (M1 Schema Hardening + Milestone 2: Core Masters, 5 Product Types, Multi-UOM, Batch/MRP Engine, Repacking & Cycle Count Audit)
+**To:** Agy CLI Execution Squad (5x Senior Devs — Flash 3.8 High)
+**Repository:** `https://github.com/Ganesaperumal/TI_ERP.git`
+**Last Verified Commit:** `ff1e4fb80f2d9fdfc41a37a1c726ee9aa7cbb3eb`
+**Dispatch ID:** `DISPATCH-003` (`REMOD-201` Bug Fixes + Milestone 3: Procurement, Auto-Reorder, Fast & 3-Way Match GRN, Net Landing Cost & Margin Guardrail, Consignment & BYOK AI Invoice OCR)
 **Status:** `EXECUTE IMMEDIATELY`
 
 ---
 
-## SECTION A: DOCUMENTATION & REPO HYGIENE UPDATES (MANDATORY FIRST STEP)
+## SECTION A: DOCUMENTATION & STATE TRACKER UPDATES (MANDATORY FIRST STEP)
 
-1. **Remove Root-Level Duplicate Docs:**
-   In commit `11613591e87e1199a51c730eb92cdb75b9316955`, control files (`00_BOOTLOADER_ARGON.md`, `01_MASTER_BLUEPRINT.md`, `02_STATE_TRACKER.md`, `03_DEV_PROTOCOL.md`, `HO_TO_WO_DISPATCH.md`, `WO_TO_HO_REPORT.md`) were placed in BOTH the repository root and `agy-cli/`.
-   - **Action:** Move/consolidate `03_DEV_PROTOCOL.md` into `agy-cli/03_DEV_PROTOCOL.md` and delete the duplicate control `.md` files from the root directory (keep ONLY `README.md` in root; keep all HO/WO docs strictly inside `agy-cli/`).
-2. **Update `agy-cli/02_STATE_TRACKER.md`:**
-   - Mark **M1: Foundation & Database Architecture** as `COMPLETED (Commit: 11613591e87e1199a51c730eb92cdb75b9316955)`.
-   - Mark **M2: Core Masters & Inventory Engine (`WO-201` to `WO-205`)** as `IN_PROGRESS`.
+1. **Update `agy-cli/02_STATE_TRACKER.md`:**
+   - Mark **M2: Core Masters & Inventory Engine (`WO-201` to `WO-205`)** as `COMPLETED — PENDING REMOD-201 PATCH (Commit: ff1e4fb80f2d9fdfc41a37a1c726ee9aa7cbb3eb)`.
+   - Mark **M3: Procurement, Supplier & AI OCR Engine (`WO-301` to `WO-305`)** as `IN_PROGRESS`.
 
 ---
 
-## SECTION B: AUDIT & RE-MODIFICATION OF MILESTONE 1 BUILD (`REMOD-101`)
+## SECTION B: CTO CODE AUDIT & RE-MODIFICATION ORDERS (`REMOD-201`)
 
-Before writing Milestone 2 services, `DEV-1` must inspect `packages/database/prisma/schema/` (`00_datasource.prisma` through `03_pos_crm_finance_hr.prisma`) and verify/fix the following strict architectural invariants:
+During Argon CTO's line-by-line inspection of the embedded code in `WO_TO_HO_REPORT.md` (Commit `ff1e4fb80f2d9fdfc41a37a1c726ee9aa7cbb3eb`), 3 critical runtime/business-logic bugs were caught. Fix these BEFORE merging Milestone 3:
 
-1. **Precision Decimal Audit:** Every single currency, tax rate, conversion factor, weight, and stock quantity column across `01`, `02`, and `03` MUST have explicit `@db.Decimal(15, 4)` (for quantities, weights, conversion factors, net landing costs) or `@db.Decimal(15, 2)` (for final invoice totals, MRPs, ledger balances). Zero `Float` types are permitted anywhere in Prisma.
-2. **Offline-First Sync Columns Audit:** Verify every operational model includes `tenantId`, `branchId` (nullable only on global tenant masters), `syncVersion BigInt @default(1)`, and `lastSyncedAt DateTime?`.
-3. **Database Service Export (`packages/database/src/index.ts`):**
-   Currently `packages/database/src/index.ts` only has `export * from '@prisma/client';`.
-   - **Action:** Upgrade `packages/database/src/index.ts` to also export a reusable `PrismaService` singleton / helper and `Decimal` utility (`Prisma.Decimal`) so `apps/api` can inject `@ti-erp/database` cleanly without duplicate PrismaClient instantiations.
+### 1. `[REMOD-201A]` Assigned to `DEV-2` — Fix Multi-UOM Barcode Resolution in `CatalogService.lookup()`
+- **File:** `apps/api/src/modules/catalog/catalog.service.ts`
+- **Issue:** `lookup()` checks `ProductBarcode` and `shortPluCode`/`skuCode`, plus `scaleRule`, but does NOT check `ProductUomConversion.barcode` (e.g., when a cashier scans a Master Carton or Box barcode). Also replace `parseFloat(weightRaw) / Math.pow(...)` with `new Decimal(weightRaw).div(new Decimal(10).pow(scaleRule.weightDecimals))`.
+- **Fix:** Add a lookup against `prisma.productUomConversion.findFirst({ where: { barcode: trimmedCode, product: { tenantId: branch.tenantId } }, include: { product: { include: { hsn: true, uomConversions: true, barcodes: true } } } })` returning `resolvedBy: 'UOM_CONVERSION_BARCODE'`, the matched `uomConversion` (`uomName`, `conversionFactor`, tier price), and `product`.
+
+### 2. `[REMOD-201B]` Assigned to `DEV-3` — Fix Crash on Zero-Stock `ALLOW` & Floating-Point Math in `InventoryBatchService.resolveBatchForPosSale()`
+- **File:** `apps/api/src/modules/inventory/inventory-batch.service.ts`
+- **Issues Found:**
+  1. When `balances.length === 0` and `negativeStockRule === ALLOW` (or `WARN_PIN` with a valid `supervisorPin`), execution continues to `const bestBatchBalance = balances[0]; const resolvedBatch = bestBatchBalance.batch;`, which crashes with `TypeError: Cannot read properties of undefined (reading 'batch')`!
+  2. It queries `binStockBalance` across all bins instead of prioritizing `SHOP_FLOOR` (and excluding `DAMAGED_RETURNABLE` / `DAMAGED_SCRAP`).
+  3. It uses `Number(resolvedBatch.retailSellingPrice)` float math instead of `Decimal` arithmetic.
+- **Fix:**
+  - Filter `binStockBalance` to `bin: { binType: { in: ['SHOP_FLOOR', 'CONSIGNMENT'] } }` (never sell from `DAMAGED_RETURNABLE` or `DAMAGED_SCRAP`!).
+  - When `balances.length === 0` and negative stock is permitted (`ALLOW` or `WARN_PIN` verified), fallback to fetching the latest `InventoryBatch` for that `branchId` + `productId` (ordered by `createdAt: 'desc'`) so the POS can bill using the latest known MRP/Selling Price and record a negative balance in `SHOP_FLOOR`!
+  - Use `Decimal` for all clearance discount calculations (`effectivePrice = retailSellingPrice.sub(retailSellingPrice.mul(clearanceDiscountPct).div(100)).toDecimalPlaces(2)`).
+
+### 3. `[REMOD-201C]` Assigned to `DEV-4` — Fix 2-Up Sticker Layout & Regional Name in `ZplLabelGenerator`
+- **File:** `apps/hardware-bridge/src/zpl-label.ts`
+- **Issue:** `generateRepackStickerZpl()` sets `^PW800` (100mm wide 2-up roll) but only prints 1 sticker on the left (`X=20`), wasting the right-hand sticker (`X=420`), and omits `nameRegional`.
+- **Fix:** Support true 2-up pair printing (`leftSticker` at `X=20` and optional `rightSticker` at `X=420` on a 50x25mm 2-up roll) and print `nameRegional` alongside `nameEn`.
 
 ---
 
-## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 2 (`WO-201` TO `WO-205`)
+## SECTION C: NEW MODULAR WORK ORDERS — MILESTONE 3 (`WO-301` TO `WO-305`)
 
-Execute these 5 Work Orders in parallel across `DEV-1` through `DEV-5`. Every backend endpoint must use strict DTO validation (`class-validator` / `zod`), enforce `tenantId` + `branchId` isolation, and use `Prisma.Decimal` arithmetic.
+Milestone 3 builds the entire **Procurement, Supplier Ledger, Auto-Reorder, Fast vs. 3-Way Match GRN, Multi-Layer Scheme Net Landing Cost Calculator, Red Margin Guardrail, Consignment Payouts, and BYOK AI Invoice OCR Engine**.
 
-### [WO-201] Assigned to `DEV-1` (Database Module, Tenant/Branch Onboarding, Storage Bins & Plug-and-Play `StoreConfig` API)
-**Target Directory:** `apps/api/src/modules/core/` & `packages/database/`
+### [WO-301] Assigned to `DEV-1` (Supplier Master, Auto-Reorder Engine & 1-Click WhatsApp/PDF Purchase Order Generator)
+**Target Directory:** `apps/api/src/modules/procurement/suppliers/` & `apps/api/src/modules/procurement/reorder/`
 **Tasks:**
-1. Create `apps/api/src/prisma/prisma.module.ts` and `prisma.service.ts` (global NestJS module connecting to `@ti-erp/database` with automatic `syncVersion` increment middleware on create/update).
-2. Create `apps/api/src/modules/core/tenant-branch.controller.ts` & `tenant-branch.service.ts`:
-   - CRUD for `Tenant`, `Branch` (`HEAD_OFFICE`, `WAREHOUSE`, `RETAIL_STORE`), `StorageBin` (`GODOWN`, `SHOP_FLOOR`, `DAMAGED_RETURNABLE`, `DAMAGED_SCRAP`, `CONSIGNMENT`), and `PosTerminal`.
-   - `GET / PUT /api/v1/core/store-config/:branchId`: Returns and updates the merged Plug-and-Play `StoreConfig` (merging Tenant-level defaults with Branch-level overrides for Topology mode, Hardware config, Scale prefix `20+SKU+Weight`, Blind close, Batch popup vs. FEFO, Negative stock policy, Remappable POS Function Keys `F1-F12`, GST Regular vs. Composition, BYOK AI keys).
-3. Expand `packages/database/prisma/seed.ts` to seed a realistic demo supermarket:
-   - 1 Tenant (`SINGLE_STORE` toggleable to `MULTI_BRANCH`), 2 Branches (`Main Supermarket` + `Central Warehouse`), 4 Default Bins per branch (`GODOWN`, `SHOP_FLOOR`, `DAMAGED_RETURNABLE`, `DAMAGED_SCRAP`), 3 POS Counters, standard GST HSN slabs (0%, 5%, 12%, 18%, 28% + Cess), and sample items across all 5 Product Types.
+1. **`SupplierService` & Controller (`/api/v1/procurement/suppliers`):**
+   - Full CRUD for `Supplier` (GSTIN validation, credit days e.g. 14/30 days, early-payment cash discount % & days, consignment vendor flag, WhatsApp phone number, bank/NEFT details, opening balance).
+   - Supplier Ledger & Payable Aging endpoint (`GET /api/v1/procurement/suppliers/:id/ledger`): Returns bill-by-bill outstanding payables, flagging bills due within 2 days and bills eligible for early-payment Cash Discount!
+2. **Smart Auto-Reorder & Velocity Engine (`GET /api/v1/procurement/reorder/suggestions?branchId=...`):**
+   - Evaluates all products in the branch using TWO algorithms (selectable by query/config):
+     - **Rule 1 (Min/Max Stock):** Current total stock (`SHOP_FLOOR` + `GODOWN`) $\le$ `minStock` $\rightarrow$ Suggest order qty = `maxStock - currentStock`.
+     - **Rule 2 (Sales Velocity):** Calculates average daily POS sales over the last $N$ days (`reorderVelocityDays`, e.g., 14 days). If `daysOfStockRemaining <= leadTimeDays`, suggests quantity needed for the next cycle.
+   - **Best Supplier Recommender:** For each suggested item, inspects historical `GrnLineItem` records to attach the top 2 suppliers who provided the **lowest `netLandingCost`** and best free-scheme history!
+3. **Purchase Order (PO) Lifecycle & WhatsApp Payload (`PurchaseOrderService`):**
+   - Create PO (`DRAFT` -> `APPROVED` -> `SENT_TO_VENDOR` -> `PARTIALLY_RECEIVED` -> `COMPLETED`) and generate a structured WhatsApp/PDF dispatch payload (`POST /api/v1/procurement/purchase-orders/:id/dispatch-whatsapp`).
 
 ---
 
-### [WO-202] Assigned to `DEV-2` (Product Master Engine: All 5 Product Types, Multi-Barcode Aliases, Multi-UOM & Regional Transliteration Helper)
-**Target Directory:** `apps/api/src/modules/catalog/`
+### [WO-302] Assigned to `DEV-2` (Multi-Layer Scheme Net Landing Cost Engine, Fast Direct GRN vs. Enterprise 3-Way Match GRN & Margin Guardrail)
+**Target Directory:** `apps/api/src/modules/procurement/grn/`
 **Tasks:**
-1. Build `CatalogModule` (`catalog.controller.ts`, `catalog.service.ts`, DTOs) supporting:
-   - `Category`, `Brand`, and `HsnTaxMaster` CRUD.
-   - `Product` CRUD supporting all 5 locked-in types:
-     1. `STANDARD_FMCG`
-     2. `WEIGHED_LOOSE`
-     3. `REPACKED_BULK`
-     4. `COMBO_KIT` (`PRE_PACKED` and `DYNAMIC_POS` Bill-of-Materials via `ComboBomItem`)
-     5. `VARIANT_MATRIX` (Size × Color × Style automatic child SKU generator via `ProductVariant`)
-   - **Multi-Barcode Alias Engine:** Map multiple factory/internal barcodes (`ProductBarcode`) to a single SKU, or map Carton/Box barcodes via `ProductUomConversion` (`Piece` -> `Pack` -> `Box` -> `Carton`).
-   - **Ultra-Fast POS Barcode & PLU Resolver (`GET /api/v1/catalog/lookup?code=...&branchId=...`):**
-     - Must resolve within <5ms:
-       - Case A: Standard EAN/Internal barcode or Multi-UOM carton barcode.
-       - Case B: 3-digit `shortPluCode` or phonetic search (`nameEn` / `nameRegional`).
-       - Case C: **Weighing Scale EAN-13 Prefix Parser** (reads `StoreConfig.scaleBarcodePrefix`, e.g., `20` + `5-digit SKU/PLU` + `5-digit weight in grams` + check digit, returning the resolved Product + exact fractional weight in kg e.g., `0.750`!).
-   - **Pre-Loaded FMCG Seed Importer & Legacy CSV/Excel Mapper (`POST /api/v1/catalog/import`):** Endpoint to bulk-import items from CSV/JSON or seed library with Bilingual (`nameEn` + `nameRegional` e.g. Tamil/Hindi) support.
+1. **True Net Landing Cost & Margin Guardrail Calculator (`calculateGrnLineCosting`):**
+   - Must use strict `Decimal(15,4)` arithmetic to handle Indian FMCG distributor bills with all 5 layers of schemes and charges:
+     - Given: `billedQty`, `freeSchemeQty`, `grossPurchaseRate`, `tradeDiscountPct`, `tradeDiscountAmount`, `cashDiscountPct`, `gstRatePct`, `cessRatePct`, `apportionedFreightAndUnloading`.
+     - Step 1: $\text{Gross Line Value} = \text{billedQty} \times \text{grossPurchaseRate}$
+     - Step 2: Subtract Trade Discount (% and flat) and Cash Discount (%) to get $\text{Taxable Line Value}$.
+     - Step 3: Compute GST (`CGST + SGST` if supplier GSTIN state matches branch state, else `IGST`) + `Cess`.
+     - Step 4: Total Received Units = $\text{totalUnits} = (\text{billedQty} + \text{freeSchemeQty}) \times \text{uomConversionFactor}$.
+     - Step 5: Compute `netLandingCostPerBaseUnit`:
+       - If tenant GST Regime is `REGULAR` (ITC eligible):
+         $$\text{Net Landing Cost (Excl. ITC GST)} = \frac{\text{Taxable Line Value} + \text{Apportioned Freight}}{\text{totalUnits}}$$
+       - If tenant GST Regime is `COMPOSITION` (or non-creditable): include GST in the numerator!
+   - **Smart Margin Guardrail Check:**
+     - Compare `newNetLandingCost` against `previousBatch.netLandingCost` and current `retailSellingPrice`:
+       $$\text{Actual Margin \%} = \frac{\text{retailSellingPrice} - \text{newNetLandingCost}}{\text{retailSellingPrice}} \times 100$$
+     - If `Actual Margin % < targetMarginPct` (or `newNetLandingCost > previousNetLandingCost`), set `marginGuardrailTriggered: true`, `alertColor: 'RED'`, and compute `suggestedRetailSellingPrice`!
+2. **Dual-Mode GRN Engine (`GrnService`):**
+   - **Mode A: Fast Direct Purchase Bill (`POST /api/v1/procurement/grn/fast-direct`):** Single-step atomic `$transaction` that creates the GRN, creates/updates `InventoryBatch` (updating `retailSellingPrice` if overridden by owner during GRN), increments `BinStockBalance` (in `GODOWN` or `SHOP_FLOOR`), writes `StockLedger`, and returns barcode sticker print counts.
+   - **Mode B: Enterprise 3-Way Match (`POST /api/v1/procurement/grn/gate-entry` -> `blind-count` -> `three-way-match`):**
+     - Storekeeper enters `BlindGRN` quantities without seeing PO prices.
+     - Accounts enters Supplier Invoice -> System compares **PO Rate/Qty vs. Blind GRN Qty vs. Supplier Invoice Rate/Qty**, automatically flagging `RATE_VARIANCE` or `SHORT_SUPPLY` discrepancies requiring Manager approval!
 
 ---
 
-### [WO-203] Assigned to `DEV-3` (Batch/MRP/Expiry Engine, FEFO vs. Popup Resolver, Bulk-to-Retail Repacking & Shelf Gondola Tags)
-**Target Directory:** `apps/api/src/modules/inventory/`
+### [WO-303] Assigned to `DEV-3` (Purchase Returns / GST Debit Notes, Damaged Bin Replacement & Consignment Pay-On-Sale Engine)
+**Target Directory:** `apps/api/src/modules/procurement/returns-consignment/`
 **Tasks:**
-1. Build `InventoryBatchService` & Controller:
-   - Manage `InventoryBatch` (`batchNumber`, `expiryDate`, `mrp`, `purchaseRate`, `netLandingCost`, `retailSellingPrice`, `wholesalePriceTier1`, `wholesalePriceTier2`, `clearanceDiscountPct`) and `BinStockBalance` (`GODOWN` vs. `SHOP_FLOOR` vs. `DAMAGED_RETURNABLE`).
-   - **POS Batch Resolution Logic (`resolveBatchForPosSale`):**
-     - Checks item's `batchTrackingMode` (falling back to `StoreConfig` default).
-     - If all active in-stock batches in `SHOP_FLOOR` share the same MRP & Selling Price (or mode is `AUTO_FEFO`), automatically returns the oldest expiring batch (**FEFO - First Expiry, First Out**).
-     - If multiple batches in stock have *different* MRPs/Selling Prices and mode is `POPUP_ON_MRP_DIFF`, returns `requiresBatchPopup: true` with the sorted list of active batches (`MRP`, `SellingPrice`, `ExpiryDate`, `AvailableQty`) for the cashier's `1/2` key selection.
-   - **Negative Stock Guardrail Check:** Enforces `ALLOW` (allows balance below 0 and flags for auto-reconciliation on next GRN), `WARN_PIN` (requires supervisor PIN token), or `BLOCK`.
-   - **Near-Expiry Alert & 1-Click Clearance Offer (`GET /api/v1/inventory/near-expiry?days=30|60|90` & `POST /api/v1/inventory/clearance-offer`):** Lists batches expiring within 30/60/90 days and lets the owner apply a batch-specific clearance discount %.
-2. **Bulk-to-Retail Repacking Engine (`POST /api/v1/inventory/repacking`):**
-   - Executes inside a strict Prisma `$transaction`:
-     - Deducts `bulkQtyConsumed` (e.g., `50.0000 kg`) from the Bulk Parent SKU's batch in `GODOWN`.
-     - Records `wastageQty` (e.g., `0.5000 kg`) to the Wastage Stock Ledger.
-     - Computes the exact new unit landing cost:
-       $$\text{New Unit Landing Cost} = \frac{(\text{Bulk Qty Consumed} \times \text{Bulk Unit Cost}) + \text{Packaging Material Cost}}{\text{Retail Packs Produced}}$$
-     - Creates/updates the Retail Child SKU's `InventoryBatch` with packed date, expiry date, new barcode, and adds `retailPacksProduced` (e.g., `49` packs of `1kg`) to `SHOP_FLOOR` (or `GODOWN`), returning a ZPL/TSPL print job payload for 49 barcode stickers!
+1. **Purchase Return & GST Debit Note Engine (`PurchaseReturnService`):**
+   - `GET /api/v1/procurement/returns/returnable-damages?branchId=...&supplierId=...`: Automatically queries `BinStockBalance` in `DAMAGED_RETURNABLE` and expired batches mapped to that supplier so the owner never forgets to claim money back for expired/damaged goods!
+   - `POST /api/v1/procurement/returns/debit-note`: Atomically deducts stock from `DAMAGED_RETURNABLE` (or `GODOWN`), reverses proportionate GST (`CGST/SGST/IGST`), creates `PurchaseReturnDebitNote`, and supports two settlement modes:
+     - `DEDUCT_FROM_NEXT_PAYMENT` (reduces supplier payable balance)
+     - `FREE_REPLACEMENT_TRACKER` (tracks pending physical replacement units owed by the distributor).
+2. **Consignment / Vendor-Managed Inventory Payout Engine (`ConsignmentService`):**
+   - For items/batches where `isConsignment: true`:
+   - `GET /api/v1/procurement/consignment/settlement-preview?supplierId=...&from=...&to=...`:
+     - Queries actual POS sales (`PosInvoiceLine` minus `SalesReturn`) for that vendor's consignment batches during the period.
+     - Computes: $\text{Vendor Payout} = \text{Total Consignment Sales Value} - \text{Store Commission \% (or agreed Net Landing Cost of sold units only)}$.
+   - `POST /api/v1/procurement/consignment/settle`: Generates `ConsignmentSettlement` voucher and marks sold units as settled with the vendor.
 
 ---
 
-### [WO-204] Assigned to `DEV-4` (Inter-Branch Transfers with GIT, Internal Godown-to-Shelf Moves, Damages & Live Rack Cycle Counting)
-**Target Directory:** `apps/api/src/modules/stock-ops/` & `apps/hardware-bridge/src/`
+### [WO-304] Assigned to `DEV-4` (BYOK AI Purchase Bill OCR & CSV/Excel Smart Invoice Importer)
+**Target Directory:** `apps/api/src/modules/ai-copilot/`
 **Tasks:**
-1. **Internal Bin Transfer (`POST /api/v1/stock-ops/bin-transfer`):**
-   - Move stock between `GODOWN` -> `SHOP_FLOOR` or `SHOP_FLOOR` -> `DAMAGED_RETURNABLE` / `DAMAGED_SCRAP` with full immutable `StockLedger` entries.
-2. **Inter-Branch Stock Transfer (`StockTransferService`):**
-   - Full state machine: `INDENT_REQUESTED` -> `DISPATCHED_GIT` (deducts from Source Branch and holds in Goods-in-Transit virtual ledger, generates Delivery Challan / E-Way Bill payload) -> `RECEIVED_AT_BRANCH` (adds received qty to Destination Branch, logs any shortage/damage discrepancy for HO approval).
-3. **Live Cycle Counting (Audit Without Closing the Shop - `CycleCountService`):**
-   - `POST /api/v1/stock-ops/cycle-count/start`: Takes an instant **Stock Freeze Snapshot** (`systemFrozenQty`) for a chosen Rack/Bin or Category while POS counters keep billing.
-   - `POST /api/v1/stock-ops/cycle-count/:id/submit-counts`: Accepts scanned physical counts (`physicalCountedQty`), calculates `varianceQty`, and upon Manager Approval (`POST /api/v1/stock-ops/cycle-count/:id/approve`), posts adjustment entries to `BinStockBalance` and `StockLedger`.
-4. **ZPL/TSPL Barcode Sticker & Shelf-Edge Gondola Tag Generator (`apps/hardware-bridge/src/zpl-label.ts`):**
-   - Add ZPL/TSPL command generation to `apps/hardware-bridge` supporting:
-     - **50x25mm (2-up) & 38x25mm Repacking Barcode Stickers** (Store Name, Bilingual Item Name, Weight, Packed Date, Expiry Date, MRP, Selling Price, EAN-13/Code128 barcode).
-     - **Shelf-Edge Gondola Price Cards** (`MRP ₹X | Our Price ₹Y | You Save ₹Z!`).
+1. **Modular BYOK AI Provider Service (`AiProviderService`):**
+   - Reads the tenant's configured AI provider (`GEMINI`, `OPENAI`, `ANTHROPIC`) and API key from `Tenant` / `StoreConfig` (or environment fallback for testing).
+   - Implements a unified structured-JSON vision/text extraction adapter (`extractStructuredJson<T>(prompt, imageOrPdfBase64, schema)`).
+2. **AI Distributor GST Invoice OCR (`POST /api/v1/ai-copilot/ocr-purchase-invoice`):**
+   - Accepts a photo/PDF base64 or structured text/CSV of a distributor's GST bill.
+   - Extracts: `supplierName`, `supplierGstin`, `invoiceNumber`, `invoiceDate`, and line items (`rawItemName`, `hsnCode`, `batchNumber`, `expiryDate`, `mrp`, `billedQty`, `freeQty`, `grossRate`, `tradeDiscountPct`, `gstRatePct`).
+   - **Smart SKU Fuzzy Matcher:** Automatically matches each extracted line item against the store's `Product` catalog (by Barcode, HSN + Name similarity, or previous supplier `GrnLineItem` mapping) and runs `calculateGrnLineCosting()` so the frontend receives a ready-to-save GRN preview with Margin Guardrail alerts pre-computed!
 
 ---
 
-### [WO-205] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: Back-Office Inventory, Product Master, Repacking Studio & Barcode Designer UI)
-**Target Directory:** `apps/pos-web/src/features/inventory/` & `apps/pos-web/src/features/settings/`
+### [WO-305] Assigned to `DEV-5` (React Frontend in `apps/pos-web`: Smart GRN Entry with Red Margin Guardrail, AI Invoice Upload, Auto-Reorder & Supplier Portal)
+**Target Directory:** `apps/pos-web/src/features/procurement/` & `apps/pos-web/src/App.tsx`
 **Tasks:**
-Build clean, keyboard-friendly, high-density supermarket management screens inside `apps/pos-web`:
-1. **Plug-and-Play Store Settings Page (`StoreConfigPage.tsx`):**
-   - Visual toggle switches for Single-Store vs. Multi-Branch, Regular vs. Composition GST, Batch Popup vs. Auto-FEFO, Negative Stock policy, Blind Cash Close, Weighing Scale Prefix rule, and a visual **Keyboard Shortcut Remapper (`F1`–`F12`)**.
-2. **Unified Product Master & Multi-UOM / Batch Drawer (`ProductMasterPage.tsx`):**
-   - High-speed searchable table supporting all 5 Product Types, Bilingual name input (`English` + `Regional`), Multi-UOM conversion rows, Multi-Barcode alias list, and live Bin-wise (`Godown` vs. `Shop Floor` vs. `Damaged`) Batch/MRP stock breakdown.
-3. **Bulk-to-Retail Repacking & Sticker Print Screen (`RepackingStudioPage.tsx`):**
-   - Select Bulk Sack Item/Batch -> Enter Bulk Qty Used, Retail Child Pack SKU, Packs Produced, Wastage, Packaging Cost -> Live preview of calculated Net Landing Cost & Margin % -> Click **"Convert & Print 49 Barcode Labels"**.
-4. **Live Cycle Count & Near-Expiry Clearance Screen (`StockAuditAndExpiryPage.tsx`):**
-   - Tabs for (A) 30/60/90-day Near-Expiry items with 1-click Clearance Discount, (B) Godown-to-Shelf Refill alerts, and (C) Live Rack Cycle Count entry.
+Build high-speed keyboard-driven procurement screens in `apps/pos-web` and wire them into the main navigation in `App.tsx`:
+1. **High-Speed GRN & Purchase Bill Screen (`GrnEntryPage.tsx`):**
+   - Toggle between **Fast Direct Bill Mode** and **3-Way Match PO Mode**.
+   - **"AI Scan Bill / Upload CSV" Button:** Opens modal to upload a distributor invoice -> auto-populates the GRN grid.
+   - **Live Costing & Red Margin Guardrail Grid:** Columns for `Item`, `UOM`, `Batch`, `Expiry`, `Billed Qty`, `Free Qty`, `Gross Rate`, `Trade Disc %`, `Cash Disc %`, `GST %`, `True Net Landing Cost (Auto)`, `Old Cost`, `MRP`, `Margin %`, and `Store Selling Price (Editable inline)`.
+   - Rows where `New Landing Cost > Old Cost` or `Margin % < Target Margin` automatically glow **RED** with a 1-click **"Apply Suggested Price"** button!
+2. **Smart Auto-Reorder & WhatsApp PO Screen (`AutoReorderAndPoPage.tsx`):**
+   - Shows low-stock and high-velocity items running out within 3 days, side-by-side supplier comparison (`Lowest Cost Supplier` vs. `Last Supplier`), and a 1-click **"Generate & Send PO on WhatsApp"** action.
+3. **Supplier Ledger, Debit Notes & Consignment Payout Screen (`SuppliersAndReturnsPage.tsx`):**
+   - Tabs for: (A) Supplier Payable Aging & Early-Pay Cash Discount alerts, (B) Damaged/Expired Stock -> 1-Click GST Debit Note creator, and (C) Consignment Vendor Sold-Stock Payout calculator.
 
 ---
 
-## SECTION D: MANDATORY RETURN REPORT FORMAT (`agy-cli/WO_TO_HO_REPORT.md`)
+## SECTION D: MANDATORY SELF-CONTAINED RETURN REPORT (`agy-cli/WO_TO_HO_REPORT.md`)
 
-**CRITICAL RULE FOR BOSS'S UPLOAD TO GEMINI WEB:**
-Because Gemini Web reads plain-text `.md` files directly (whereas `.zip` archives compress text into binary streams), `agy-cli/WO_TO_HO_REPORT.md` MUST be a **self-contained, detailed plain-text Markdown audit report** so the Boss only needs to upload `agy-cli/WO_TO_HO_REPORT.md` to Head Office!
-
-When `REMOD-101` and `WO-201` through `WO-205` are complete, write `agy-cli/WO_TO_HO_REPORT.md` containing:
-1. **Executive Summary & Git Commit Hash** (Branch, Commit SHA, Timestamp).
-2. **Milestone 1 Re-Modification Verification (`REMOD-101`):**
-   - Confirm root duplicate `.md` files were removed.
-   - Paste the exact model names and `@db.Decimal` verification summary from `01_core_tenant_branch.prisma`, `02_inventory_procurement.prisma`, and `03_pos_crm_finance_hr.prisma`.
-3. **Work Order Completion Matrix (`WO-201` to `WO-205`):**
-   - List every created/modified file path with a summary of its implemented methods and routes.
-4. **Key Code & Algorithm Snippets Embedded in Report:**
-   - Paste the core implementation blocks of:
-     - `CatalogService.lookup()` (showing Weighing Scale EAN-13 `20+SKU+Weight` parsing)
-     - `InventoryBatchService.resolveBatchForPosSale()` (showing FEFO vs. MRP-Popup logic)
-     - `InventoryBatchService.executeRepackingJob()` (showing the Prisma `$transaction` and landing cost math)
-     - `zpl-label.ts` (showing 2-up sticker and Gondola tag generation)
-5. **Exact Build & Validation Command Logs:**
-   - Full terminal output of:
-     - `pnpm --filter @ti-erp/database prisma validate`
-     - `pnpm --filter @ti-erp/database prisma generate`
-     - `pnpm -r build` (or `pnpm -r typecheck`) — MUST show **0 errors** across `packages/shared-types`, `packages/database`, `apps/api`, `apps/hardware-bridge`, `apps/pos-web`, and `apps/cloud-admin`.
+When `REMOD-201` (`A`, `B`, `C`) and `WO-301` through `WO-305` are complete, write the plain-text report to `agy-cli/WO_TO_HO_REPORT.md` containing:
+1. **Executive Summary & Git Commit SHA** (confirming push to `main`).
+2. **`REMOD-201` Verification Snippets:**
+   - Paste the updated code blocks for `CatalogService.lookup()` (showing `productUomConversion` barcode lookup), `InventoryBatchService.resolveBatchForPosSale()` (showing zero-stock `ALLOW` fallback without crashing + `SHOP_FLOOR` filter + `Decimal` math), and `ZplLabelGenerator.generateRepackStickerZpl()` (showing 2-up `X=20` and `X=420` side-by-side stickers).
+3. **Work Order Completion Matrix (`WO-301` to `WO-305`):**
+   - Exact file paths, controllers, services, and UI components created.
+4. **Core Milestone 3 Algorithm Snippets Embedded in Report:**
+   - Paste the exact implementation of `GrnService.calculateGrnLineCosting()` (showing multi-layer Free Qty + Trade/Cash Discount + Freight apportionment + Margin Guardrail red flag).
+   - Paste the exact implementation of `GrnService.createFastDirectGrn()` and 3-Way Match variance detection.
+   - Paste the core implementation of `AiProviderService` / `ocrPurchaseInvoice()`.
+5. **Exact Build & Typecheck Terminal Output:**
+   - `pnpm --filter @ti-erp/database prisma validate`
+   - `pnpm -r typecheck` (must show 0 errors across all 6 packages)
+   - `pnpm build` (must show 6/6 successful tasks)
